@@ -83,8 +83,10 @@ def matches(con, cfg, tiers=("act", "watch", "info"), include_keyword=False, ite
         s = sigs.get(r["cve_id"], {})
         t, why = tier(s, r, r["epss_pct"], cfg)
         backports = json.loads(r.pop("item_extra") or "{}").get("backports")
-        # distro packages with no version data and nothing known to exploit them are noise
-        if t == "info" and r["status"] == "check" and backports:
+        # A "check" on a distro or vendor build (Proxmox kernel, FreeBSD base, a dpkg package no
+        # tracker answered) means "upstream says affected, the vendor may have patched it". A PoC
+        # or a high EPSS isn't enough to bother anyone with that; real exploitation (act) is.
+        if r["status"] == "check" and backports and t != "act":
             continue
         if t not in tiers:
             continue

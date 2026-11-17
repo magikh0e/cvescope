@@ -77,7 +77,7 @@ version = "30.0.4"
 # [[inventory]]
 # type = "dpkg"
 # name = "web1"
-# command = ["ssh", "web1", "cat /etc/os-release; echo ---; dpkg-query -W -f='${Package} ${Version} ${source:Package}\\n'"]
+# command = ["ssh", "web1", "cat /etc/os-release; echo ---; dpkg-query -W -f='${db:Status-Abbrev} ${Package} ${Version} ${source:Package}\\n'"]
 # packages = "all"                  # default: only the ~60 packages cvescope has names for
 
 # Apps in running containers (docker ps / podman ps), local or over ssh

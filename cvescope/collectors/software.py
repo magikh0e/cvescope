@@ -102,13 +102,20 @@ def clean_name(name: str) -> str:
     return s.lower()
 
 
+# apps that update themselves in the background: an old CVE without version data is long fixed
+AUTO_UPDATING = {"Google Chrome", "Microsoft Edge", "Firefox", "Thunderbird", "VS Code", "Signal",
+                 "Telegram Desktop", "Bitwarden"}
+
+
 def program_item(name: str, version: str, host: str, everything: bool, publisher: str = ""):
     key = clean_name(name)
     if not key or not version:
         return None
     for rx, disp, aliases in PROGRAMS:
         if rx.search(key):
-            return item(f"{disp} ({host})", version=version, aliases=aliases, program=name, publisher=publisher)
+            extra = {"auto_updates": True} if disp in AUTO_UPDATING else {}
+            return item(f"{disp} ({host})", version=version, aliases=aliases, program=name, publisher=publisher,
+                        **extra)
     if everything:
         return item(f"{name} ({host})", version=version, aliases=[f"*:{db.norm(key)}"], program=name,
                     publisher=publisher)
@@ -182,7 +189,9 @@ def _items_for_host(host: str, rows: list[dict], everything: bool) -> list[dict]
         w = windows_os(win, host)
         if w:
             out.append(w)
-    debs = [r for r in rows if "source" in r and "arch" in r and "version" in r]
+    # deb_packages also lists removed packages with config left ("deinstall ok config-files")
+    debs = [r for r in rows if "source" in r and "arch" in r and "version" in r
+            and str(r.get("status") or "installed").split()[-1:] == ["installed"]]
     if debs:
         text = "\n".join(f"{r['name']} {r['version']} {r.get('source') or r['name']}" for r in debs)
         try:
@@ -190,7 +199,7 @@ def _items_for_host(host: str, rows: list[dict], everything: bool) -> list[dict]
         except RuntimeError:
             pass
     for r in rows:
-        if r is osr or r is win or r in debs or r.get("_table") == "kernel":
+        if r is osr or r is win or r in debs or r.get("_table") == "kernel" or ("source" in r and "arch" in r):
             continue
         name = r.get("name") or r.get("DisplayName") or r.get("bundle_name") or ""
         ver = str(r.get("version") or r.get("DisplayVersion") or r.get("bundle_short_version") or "").strip()
@@ -260,7 +269,7 @@ QUERIES = {
     "windows": [("programs", "SELECT name, version, publisher FROM programs")],
     "darwin": [("apps", "SELECT name, bundle_short_version AS version FROM apps"),
                ("homebrew", "SELECT name, version FROM homebrew_packages")],
-    "deb": [("deb", "SELECT name, version, source, arch FROM deb_packages")],
+    "deb": [("deb", "SELECT name, version, source, arch, status FROM deb_packages")],
     "rpm": [("rpm", "SELECT name, version, release, arch FROM rpm_packages")],
 }
 

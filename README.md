@@ -104,7 +104,7 @@ answer:
 [[inventory]]
 type = "dpkg"
 name = "web1"
-command = ["ssh", "web1", "cat /etc/os-release; echo ---; dpkg-query -W -f='${Package} ${Version} ${source:Package}\\n'"]
+command = ["ssh", "web1", "cat /etc/os-release; echo ---; dpkg-query -W -f='${db:Status-Abbrev} ${Package} ${Version} ${source:Package}\\n'"]
 # packages = "all"   # every source package, not just the ~60 cvescope has names for
 ```
 

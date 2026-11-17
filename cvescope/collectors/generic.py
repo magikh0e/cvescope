@@ -49,12 +49,13 @@ def command(e: dict) -> list[dict]:
 def dpkg(e: dict) -> list[dict]:
     """Installed packages from a Debian/Ubuntu host.
 
-    Recommended command (os-release first, then one package per line with its source package):
-      command = ["ssh", "web1", "cat /etc/os-release; echo ---; dpkg-query -W -f='${Package} ${Version} ${source:Package}\\n'"]
+    Recommended command (os-release first, then one package per line with its status and source):
+      command = ["ssh", "web1", "cat /etc/os-release; echo ---; dpkg-query -W -f='${db:Status-Abbrev} ${Package} ${Version} ${source:Package}\\n'"]
 
     With the os-release part, each package carries its release ("ubuntu:noble", "debian:12") and
     the distro's own security tracker decides fixed/affected, backports included. Without it,
-    in-range hits stay "check".
+    in-range hits stay "check". The status column matters: `dpkg-query -W` also lists removed
+    packages whose config files remain ("rc"), and only installed ones ("ii", "hi") count.
     packages = "all" adds every source package; by default only the ones in packages.PACKAGES.
     """
     out = _run(e["command"], e.get("timeout", 120))
@@ -71,6 +72,12 @@ def dpkg_items(out: str, host: str, wanted=None, release: str | None = None) -> 
     items, done = [], set()
     for line in pkgs.splitlines():
         parts = line.strip().split()
+        # optional leading ${db:Status-Abbrev}: "ii" installed, "rc" removed with config left
+        if parts and re.fullmatch(r"[uihrp][ncHUFWti][R ]?", parts[0]) and len(parts) >= 3 \
+                and parts[2][:1].isdigit():
+            if parts[0][1] != "i":
+                continue
+            parts = parts[1:]
         if len(parts) < 2 or not parts[1][:1].isdigit():
             continue
         name, ver = parts[0], parts[1]

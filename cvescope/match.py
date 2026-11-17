@@ -70,12 +70,37 @@ def _names(item: dict) -> list:
     return [p for p in (name_pattern(n) for n in names if n) if p]
 
 
+AUTO_UPDATE_DAYS = 365  # an auto-updating app is past any CVE older than this
+
+
+def _published_days_ago(cve_row) -> int | None:
+    try:
+        pub = cve_row["published"]
+    except (IndexError, KeyError):
+        return None
+    if not pub:
+        return None
+    try:
+        when = dt.datetime.fromisoformat(pub[:10]).replace(tzinfo=dt.timezone.utc)
+    except ValueError:
+        return None
+    return (dt.datetime.now(dt.timezone.utc) - when).days
+
+
 def _from_description(item: dict, cve_row, how: str, reason: str) -> tuple[str, str, str]:
     ver = clean(item.get("version"))
     if ver:
         top = desc_max(cve_row["description"] or "", item.setdefault("_pats", _names(item)))
         if top and cmp(ver, top) > 0:
             return "not_affected", how, f"no version data; the description names versions up to {top}"
+    # Browsers, VS Code and the like update themselves within days. A CVE record with no version
+    # data that's over a year old is fixed in any build that's still updating.
+    if (item.get("extra") or {}).get("auto_updates"):
+        age = _published_days_ago(cve_row)
+        if age is not None and age > AUTO_UPDATE_DAYS:
+            app = re.sub(r"\s*\([^)]*\)$", "", item["name"])
+            return ("not_affected", how,
+                    f"no version data; {app} updates itself and this CVE is {age // 365} year(s) old")
     return "check", how, reason
 
 
@@ -190,7 +215,7 @@ def run(con, cfg) -> str:
         cands = _candidates(con, aliases)
         for i in range(0, len(cands), 500):
             chunk = list(cands)[i:i + 500]
-            q = (f"SELECT id, affected, description FROM cve WHERE state='PUBLISHED' "
+            q = (f"SELECT id, affected, description, published FROM cve WHERE state='PUBLISHED' "
                  f"AND id IN ({','.join('?' * len(chunk))})")
             for row in con.execute(q, chunk):
                 status, how, reason = evaluate(it, row)

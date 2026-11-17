@@ -46,6 +46,16 @@ class Dpkg(unittest.TestCase):
                          ("ubuntu:noble", "openssh", "1:9.6p1-3ubuntu13.5"))
         self.assertEqual(len(dpkg_items(out, "web1", "all")), 3)
 
+    def test_removed_packages_are_skipped(self):
+        out = ("ID=ubuntu\nVERSION_CODENAME=noble\n---\n"
+               "rc  libssl3 3.0.2-0ubuntu1.18 openssl\n"
+               "ii  libssl3t64 3.0.13-0ubuntu3.16 openssl\n"
+               "rc  apache2 2.4.58-1ubuntu8.15 apache2\n"
+               "hi  openssh-server 1:9.6p1-3ubuntu13.20 openssh\n")
+        items = {i["name"]: i for i in dpkg_items(out, "vps")}
+        self.assertEqual(set(items), {"OpenSSL (vps)", "OpenSSH (vps)"})   # apache2 is removed
+        self.assertEqual(items["OpenSSL (vps)"]["extra"]["package_version"], "3.0.13-0ubuntu3.16")
+
 
 class Distro(unittest.TestCase):
     def setUp(self):
@@ -76,6 +86,41 @@ class Distro(unittest.TestCase):
         item = dict(self.item, extra=dict(self.item["extra"], distro="debian:12"))
         match._apply_distro(self.con, item, rows)
         self.assertEqual(rows[("CVE-2024-1", "ssh")][0], "check")
+
+
+class NoiseRules(unittest.TestCase):
+    def setUp(self):
+        self.con = db.connect(":memory:")
+
+    def row(self, published):
+        self.con.execute("DELETE FROM cve")
+        self.con.execute("INSERT INTO cve(id,state,published,description,affected) VALUES('CVE-1','PUBLISHED',?,"
+                         "'A flaw in the browser.', ?)",
+                         (published, json.dumps([{"src": "cna", "v": "Google", "p": "Chrome",
+                                                  "vs": [{"version": "unspecified", "status": "affected"}]}])))
+        return self.con.execute("SELECT id, affected, description, published FROM cve").fetchone()
+
+    def test_auto_updating_app_ignores_old_versionless_cve(self):
+        it = {"id": "c", "name": "Google Chrome (pc1)", "version": "157.0.1", "aliases": ["google:chrome"],
+              "extra": {"auto_updates": True}}
+        self.assertEqual(match.evaluate(it, self.row("2021-03-01T00:00:00Z"))[0], "not_affected")
+        recent = __import__("datetime").date.today().isoformat()
+        self.assertEqual(match.evaluate(it, self.row(recent + "T00:00:00Z"))[0], "check")
+        it["extra"] = {}
+        self.assertEqual(match.evaluate(it, self.row("2021-03-01T00:00:00Z"))[0], "check")
+
+    def test_backport_check_only_surfaces_when_exploited(self):
+        from cvescope import query
+        cfg = {"tiers": {"epss_watch_pct": 0.9}}
+        con = self.con
+        con.execute("INSERT INTO item(id,name,version,extra) VALUES('k','Linux kernel (h)','7.0.14','{\"backports\": true}')")
+        for cid in ("CVE-A", "CVE-B"):
+            con.execute("INSERT INTO cve(id,state,published) VALUES(?, 'PUBLISHED', '2024-01-01')", (cid,))
+            con.execute("INSERT INTO match VALUES(?, 'k', 'check', 'product', 'x', '2024-01-01')", (cid,))
+        con.execute("INSERT INTO signal VALUES('CVE-A','kev','','t','t','{}')")   # exploited
+        con.execute("INSERT INTO signal VALUES('CVE-B','poc','r','t','t','{}')")  # only a PoC
+        ids = {m["cve_id"] for m in query.matches(con, cfg, tiers=("act", "watch", "info"))}
+        self.assertEqual(ids, {"CVE-A"})
 
 
 class Guests(unittest.TestCase):
