@@ -87,7 +87,47 @@ def _published_days_ago(cve_row) -> int | None:
     return (dt.datetime.now(dt.timezone.utc) - when).days
 
 
+def _from_nvd(item: dict, cve_row) -> tuple[str, str, str] | None:
+    """NVD CPE ranges (cached by the optional nvd lookup), when they name this product."""
+    try:
+        raw = cve_row["nvd"]
+    except (IndexError, KeyError):
+        return None
+    ver = clean(item.get("version"))
+    if not raw or not ver:
+        return None
+    aliases = item.setdefault("_aliases", [_alias(a) for a in item["aliases"]])
+    hits = [e for e in json.loads(raw)
+            if any(_prod_ok(al, db.norm(e["p"])) and _vendor_ok(al[0], db.norm(e["v"])) for al in aliases)]
+    affected, decided, fixes = False, False, []
+    for e in hits:
+        if e["ver"] not in ("*", "-", ""):
+            decided = True
+            affected |= clean(e["ver"]) is not None and cmp(ver, e["ver"]) == 0
+        elif e["ver"] == "*":
+            decided = True
+            lo = (not e.get("si") or cmp(ver, e["si"]) >= 0) and (not e.get("se") or cmp(ver, e["se"]) > 0)
+            hi = (not e.get("ei") or cmp(ver, e["ei"]) <= 0) and (not e.get("ee") or cmp(ver, e["ee"]) < 0)
+            affected |= lo and hi
+            if e.get("ee") or e.get("ei"):
+                fixes.append(e.get("ee") or e.get("ei"))
+    if not decided:
+        return None
+    if affected:
+        if (item.get("extra") or {}).get("backports"):
+            return "check", "nvd", "NVD: version inside an affected range; distro package, fixes may be backported"
+        return "affected", "nvd", "NVD: version inside an affected range"
+    top = None
+    for f in fixes:
+        if top is None or cmp(f, top) > 0:
+            top = f
+    return "not_affected", "nvd", "NVD: outside every affected range" + (f" (ranges end at {top})" if top else "")
+
+
 def _from_description(item: dict, cve_row, how: str, reason: str) -> tuple[str, str, str]:
+    nvd = _from_nvd(item, cve_row)
+    if nvd:
+        return nvd
     ver = clean(item.get("version"))
     if ver:
         top = desc_max(cve_row["description"] or "", item.setdefault("_pats", _names(item)))
@@ -215,8 +255,9 @@ def run(con, cfg) -> str:
         cands = _candidates(con, aliases)
         for i in range(0, len(cands), 500):
             chunk = list(cands)[i:i + 500]
-            q = (f"SELECT id, affected, description, published FROM cve WHERE state='PUBLISHED' "
-                 f"AND id IN ({','.join('?' * len(chunk))})")
+            q = (f"SELECT c.id, c.affected, c.description, c.published, n.cpes AS nvd FROM cve c "
+                 f"LEFT JOIN nvd_cpe n ON n.cve_id = c.id WHERE c.state='PUBLISHED' "
+                 f"AND c.id IN ({','.join('?' * len(chunk))})")
             for row in con.execute(q, chunk):
                 status, how, reason = evaluate(it, row)
                 new_rows[(row["id"], it["id"])] = (status, how, reason)

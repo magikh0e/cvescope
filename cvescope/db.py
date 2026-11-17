@@ -43,6 +43,10 @@ CREATE TABLE IF NOT EXISTS distro_fix(
   release TEXT, package TEXT, cve_id TEXT, status TEXT, fixed TEXT,
   PRIMARY KEY(release, package, cve_id)) WITHOUT ROWID;
 
+-- optional NVD CPE ranges for CVEs the CVE List can't settle (see sources/nvd.py)
+CREATE TABLE IF NOT EXISTS nvd_cpe(
+  cve_id TEXT PRIMARY KEY, fetched TEXT, status TEXT, cpes TEXT) WITHOUT ROWID;
+
 CREATE TABLE IF NOT EXISTS item(
   id TEXT PRIMARY KEY, name TEXT, vendor TEXT, product TEXT, version TEXT,
   collector TEXT, aliases TEXT, keywords TEXT, extra TEXT, seen TEXT, error TEXT);

@@ -143,6 +143,9 @@ def cve_detail(con, cfg, cid: str) -> dict | None:
         "JOIN item i ON i.id=m.item_id WHERE m.cve_id=?", (cid,))]
     d["events"] = [dict(x) for x in con.execute(
         "SELECT ts, kind, detail FROM event WHERE cve_id=? ORDER BY ts DESC LIMIT 50", (cid,))]
+    names = item_names(con)
+    for e in d["events"]:
+        e["summary"] = event_summary(e, names)
     return d
 
 
@@ -152,7 +155,12 @@ _KIND = {"kev": "added to CISA KEV", "msf": "Metasploit module published", "nucl
          "resolved": "no longer affects you", "new_cve": "new CVE"}
 
 
-def event_summary(e: dict) -> str:
+def item_names(con) -> dict:
+    """item id -> the name you gave it, so history reads "OpenSSH (web01)" not a slug."""
+    return {r[0]: r[1] for r in con.execute("SELECT id, name FROM item")}
+
+
+def event_summary(e: dict, names: dict | None = None) -> str:
     d = json.loads(e.get("detail") or "{}")
     s = _KIND.get(e["kind"], e["kind"])
     if e["kind"] == "epss":
@@ -160,7 +168,8 @@ def event_summary(e: dict) -> str:
     elif e["kind"] == "ssvc":
         s += f" to {d.get('exploitation')}"
     elif e["kind"] in ("match", "resolved"):
-        s += f" ({d.get('item')}, {d.get('status')})"
+        item = d.get("item")
+        s += f" ({(names or {}).get(item, item)}, {d.get('status')})"
     elif e["kind"] == "poc":
         s += f": {d.get('url')}"
     elif e["kind"] in ("msf", "nuclei", "edb"):
@@ -181,8 +190,9 @@ def events(con, cfg, days=7, matched_only=True, limit=500) -> list[dict]:
         args = [since]
     q += " ORDER BY e.ts DESC LIMIT ?"
     rows = [dict(r) for r in con.execute(q, args + [limit])]
+    names = item_names(con)
     for r in rows:
-        r["summary"] = event_summary(r)
+        r["summary"] = event_summary(r, names)
     return rows
 
 

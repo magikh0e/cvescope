@@ -123,6 +123,35 @@ class NoiseRules(unittest.TestCase):
         self.assertEqual(ids, {"CVE-A"})
 
 
+class Nvd(unittest.TestCase):
+    def row(self, cpes):
+        con = db.connect(":memory:")
+        con.execute("INSERT INTO cve(id,state,published,description,affected) VALUES('CVE-1','PUBLISHED',"
+                    "'2021-07-07','A heap out-of-bounds write affecting Linux since v2.6.19-rc1.',?)",
+                    (json.dumps([{"src": "cna", "v": "n/a", "p": "Linux Kernel",
+                                  "vs": [{"version": "2.6.19-rc1", "lessThan": "unspecified", "status": "affected"}]}]),))
+        con.execute("INSERT INTO nvd_cpe VALUES('CVE-1','t','Analyzed',?)", (json.dumps(cpes),))
+        return con.execute("SELECT c.id, c.affected, c.description, c.published, n.cpes AS nvd FROM cve c "
+                           "LEFT JOIN nvd_cpe n ON n.cve_id=c.id").fetchone()
+
+    def item(self, version):
+        return {"id": "k", "name": "Linux kernel (h)", "version": version, "aliases": ["linux:linux kernel"],
+                "extra": {"backports": True}}
+
+    def test_old_kernel_cve_ruled_out(self):
+        cpes = [{"v": "linux", "p": "linux_kernel", "ver": "*", "si": "2.6.19", "ee": "4.4.267"},
+                {"v": "linux", "p": "linux_kernel", "ver": "*", "si": "5.11", "ee": "5.12"},
+                {"v": "netapp", "p": "c400_firmware", "ver": "-"}]
+        st, how, why = match.evaluate(self.item("7.0.14"), self.row(cpes))
+        self.assertEqual((st, how), ("not_affected", "nvd"))
+        self.assertIn("5.12", why)
+        self.assertEqual(match.evaluate(self.item("5.11.3"), self.row(cpes))[0], "check")  # in range, backports
+
+    def test_no_matching_product_falls_through(self):
+        cpes = [{"v": "netapp", "p": "c400_firmware", "ver": "-"}]
+        self.assertEqual(match.evaluate(self.item("7.0.14"), self.row(cpes))[0], "check")
+
+
 class Health(unittest.TestCase):
     def setUp(self):
         self.con = db.connect(":memory:")
@@ -153,6 +182,22 @@ class Health(unittest.TestCase):
         self.assertEqual(h["level"], "warn")
         self.assertEqual(h["failed_collectors"], ["pihole2"])
         self.assertEqual(len(h["problems"]), 2)
+
+
+class History(unittest.TestCase):
+    def test_summaries_read_as_sentences(self):
+        from cvescope import query
+        con = db.connect(":memory:")
+        con.execute("INSERT INTO item(id, name) VALUES('static:web01-openssh', 'OpenSSH (web01)')")
+        names = query.item_names(con)
+        ev = lambda kind, detail: {"kind": kind, "detail": json.dumps(detail)}
+        self.assertEqual(query.event_summary(ev("match", {"item": "static:web01-openssh", "status": "affected"}), names),
+                         "now matches your inventory (OpenSSH (web01), affected)")
+        # an item that's gone from the inventory keeps its id
+        self.assertEqual(query.event_summary(ev("resolved", {"item": "static:old", "status": "gone"}), names),
+                         "no longer affects you (static:old, gone)")
+        self.assertEqual(query.event_summary(ev("epss", {"from": 0.12, "to": 0.85})), "EPSS jumped 12% -> 85%")
+        self.assertEqual(query.event_summary(ev("kev", {})), "added to CISA KEV")
 
 
 class Guests(unittest.TestCase):

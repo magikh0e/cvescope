@@ -218,7 +218,25 @@ live in `cvescope/collectors/packages.py`; add your own per item with `aliases =
 | [Debian security tracker](https://security-tracker.debian.org/) (OSV export) | fixed package version per Debian release | ~80 MB, only if you run Debian |
 | [Ubuntu OVAL](https://security-metadata.canonical.com/oval/) | fixed package version per Ubuntu release | ~2 MB per release you run |
 
-The NVD is not used. Its analysis backlog means it often lags the CVE List itself.
+### Optional: NVD lookup
+
+The NVD isn't a feed here. Its analysis backlog means it often lags the CVE List itself. It does
+help with one thing: some CVE records carry no usable version data (old MITRE-era records,
+vendors that only list their own rebuilds), while NVD's analysts add CPE ranges with exact fixed
+versions. Turn it on and cvescope asks NVD about those records, but only for matches that are
+still **check** and showing up in act now or watch:
+
+```toml
+[nvd]
+enabled = true
+# api_key_env = "NVD_API_KEY"   # optional (or api_key_file); raises the rate limit tenfold
+max_per_run = 40
+```
+
+It's off by default because each lookup tells NIST a CVE ID you care about. Without a key, NVD
+allows 5 requests per 30 seconds, so a run with 40 lookups takes about 4 minutes. Answers are
+cached: one with no ranges yet is asked again after 7 days, the rest after 60. If a key gets
+rejected, that run falls back to keyless.
 
 ## A word on GitHub PoCs
 

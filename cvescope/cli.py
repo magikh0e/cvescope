@@ -28,6 +28,13 @@ def cmd_sync(cfg, a):
         from . import match
         print("[match]")
         print("  " + match.run(con, cfg))
+        if cfg["nvd"].get("enabled") and not only:
+            from .sources import nvd
+            print("[nvd]")
+            fetched, msg = nvd.enrich(con, cfg)
+            print("  " + msg)
+            if fetched:
+                print("  re-matching with NVD data: " + match.run(con, cfg))
     if not a.no_notify and not only:
         from . import notify
         print("[notify]")

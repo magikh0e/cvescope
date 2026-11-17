@@ -51,6 +51,13 @@ host = "127.0.0.1"   # the page is a map of your holes: keep it local
 port = 8096
 stale_after_hours = 12   # warn on the page when the last full sync is older than this
 
+# Ask NVD for CPE version ranges, only for "check" matches showing in act now / watch that the
+# CVE List can't settle. Off by default: each lookup tells NIST a CVE ID you care about.
+[nvd]
+enabled = false
+# api_key_env = "NVD_API_KEY"   # or api_key_file; optional, but 10x the rate limit (keyless: 5 per 30 s)
+max_per_run = 40                # lookups per sync; answers are cached
+
 # ============================ inventory ============================
 # Every [[inventory]] block is one collector. Common keys:
 #   name, aliases = ["vendor:product", ...], keywords = [...], enabled = false

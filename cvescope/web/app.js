@@ -184,7 +184,8 @@ async function openCve(id) {
         p.flags && p.flags.length ? h("div", { class: "warn", text: "⚠ " + p.flags.join(" · ") }) : null))));
   }
   if (d.events.length) {
-    parts.push(h("h3", { text: "History" }), h("ul", { class: "ev" }, d.events.map((e) => h("li", {}, h("span", { class: "mono muted", text: e.ts.slice(0, 16).replace("T", " ") + "  " }), e.kind))));
+    parts.push(h("h3", { text: "History" }), h("ul", { class: "ev" }, d.events.map((e) =>
+      h("li", {}, h("span", { class: "mono muted", text: e.ts.slice(0, 16).replace("T", " ") + "  " }), e.summary || e.kind))));
   }
   if (d.affected.length) {
     parts.push(h("h3", { text: "Affected (from the CVE record)" }),

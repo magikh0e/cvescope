@@ -28,12 +28,13 @@ def _pending(con, cfg) -> tuple[list[dict], list[int]]:
         if m["cve_id"] in cves:
             ms.setdefault(m["cve_id"], []).append(m)
     limit = TIER_RANK.get(cfg["notify"].get("min_tier", "act"), 0)
+    names = query.item_names(con)
     out = []
     for cid, mlist in ms.items():
         t = mlist[0]["tier"]
         if TIER_RANK[t] > limit:
             continue
-        changes = [query.event_summary(e) for e in ev if e["cve_id"] == cid]
+        changes = [query.event_summary(e, names) for e in ev if e["cve_id"] == cid]
         out.append({"cve": cid, "tier": t, "why": mlist[0]["why"], "title": mlist[0].get("title"),
                     "items": [f"{m['item_name']} {m.get('item_version') or ''} ({m['status']})".strip() for m in mlist],
                     "changes": list(dict.fromkeys(changes)), "epss_pct": mlist[0].get("epss_pct"),
