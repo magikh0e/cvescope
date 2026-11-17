@@ -1,0 +1,42 @@
+name: Bug report
+description: Something crashes, a feed or collector errors out, or the page misbehaves.
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Before pasting anything:** remove tokens, passwords, API keys, hostnames and IP addresses.
+        cvescope never prints secrets itself, but configs and shell history can hold them.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you ran, what you expected, what you got.
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output
+      description: The error or the relevant part of `cvescope sync -v` / `cvescope status`.
+      render: text
+  - type: textarea
+    id: config
+    attributes:
+      label: The relevant config block (redacted)
+      render: toml
+  - type: input
+    id: version
+    attributes:
+      label: cvescope version
+      placeholder: "cvescope --version"
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: OS and Python version
+      placeholder: Ubuntu 24.04, Python 3.12
+    validations:
+      required: true

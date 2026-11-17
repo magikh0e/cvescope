@@ -1,0 +1,79 @@
+name: Wrong or missing match
+description: A CVE that matched something it shouldn't, or missed something it should have.
+title: "[match] CVE-YYYY-NNNNN vs <product> <version>"
+labels: ["matching"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Most of these come down to how a CVE record spells the product or its versions, so they're
+        usually a quick alias or parser fix. Please leave out hostnames, IPs and anything else about
+        your own network: only the product, version and CVE are needed.
+  - type: input
+    id: cve
+    attributes:
+      label: CVE ID
+      placeholder: CVE-2024-6387
+    validations:
+      required: true
+  - type: input
+    id: item
+    attributes:
+      label: Product and installed version
+      description: As cvescope shows it in the inventory list.
+      placeholder: OpenSSH 9.6p1
+    validations:
+      required: true
+  - type: dropdown
+    id: collector
+    attributes:
+      label: Collector type
+      options:
+        - static
+        - command
+        - dpkg
+        - http_json
+        - nmap_xml
+        - docker
+        - osquery
+        - wpscan
+        - whatweb
+        - proxmox
+        - opnsense
+        - unifi
+        - pihole
+        - homeassistant
+    validations:
+      required: true
+  - type: dropdown
+    id: problem
+    attributes:
+      label: What went wrong
+      options:
+        - Shown as affected, but my version isn't
+        - Shown as check, but the version should decide it
+        - Shown as not_affected, but my version is affected
+        - Not listed at all for this item
+        - Wrong tier (act now / watch / info)
+    validations:
+      required: true
+  - type: textarea
+    id: reason
+    attributes:
+      label: Reason cvescope gave
+      description: The grey line under the item in the CVE detail panel, or `cvescope show CVE-...` output (trim it to the affected / matches parts).
+      render: text
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected, and why
+      description: For example the vendor advisory that says your version is fixed.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: cvescope version
+      placeholder: "cvescope --version"
+    validations:
+      required: true

@@ -1,0 +1,23 @@
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Leave out tokens, passwords, hostnames and IP addresses. Product names and versions are
+        all anyone needs to help.
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+      description: What you're trying to do, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: The relevant config block (redacted), if any
+      render: toml
+  - type: input
+    id: version
+    attributes:
+      label: cvescope version
+      placeholder: "cvescope --version"

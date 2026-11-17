@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or setup help
+    url: https://github.com/magikh0e/cvescope/discussions/categories/q-a
+    about: How do I configure X, why does Y match, is Z supported? Ask in Discussions.
+  - name: Security problem in cvescope itself
+    url: https://github.com/magikh0e/cvescope/security/advisories/new
+    about: Report it privately, not as a public issue. See SECURITY.md.
+  - name: The write-up
+    url: https://magikh0e.pl/pubCode/cvescope.html
+    about: Background on how cvescope ranks CVEs and why it never scans.

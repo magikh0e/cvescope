@@ -1,0 +1,35 @@
+name: Collector or product request
+description: Gear, software or a report format cvescope should be able to read.
+title: "[collector] "
+labels: ["collector"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Collectors stay **read-only** and cvescope **never scans**. A good request names a way to read
+        a version that already exists: an API endpoint, a command, a file another tool writes.
+  - type: input
+    id: what
+    attributes:
+      label: Product, device or tool
+      placeholder: TrueNAS SCALE, Synology DSM, Trivy JSON, ...
+    validations:
+      required: true
+  - type: textarea
+    id: how
+    attributes:
+      label: Where the version can be read
+      description: API endpoint and auth, CLI command, or file format, with a sample response if you have one (redacted).
+    validations:
+      required: true
+  - type: input
+    id: cve-name
+    attributes:
+      label: How CVE records name it (if you know)
+      description: Vendor and product as they appear in a CVE record, e.g. "iXsystems / TrueNAS".
+  - type: checkboxes
+    id: pr
+    attributes:
+      label: Contributing
+      options:
+        - label: I could open a pull request for this
