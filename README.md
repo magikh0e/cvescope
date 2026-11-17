@@ -67,6 +67,7 @@ Each `[[inventory]]` block in the config is one collector:
 | `command` | a version pulled from any command's output (works over `ssh`) | the command |
 | `dpkg` | known packages on a Debian/Ubuntu host | `dpkg-query` over ssh |
 | `http_json` | a version field from any JSON endpoint | URL + dotted path |
+| `nmap_xml` | every open service nmap identified in a `-sV` scan you ran | the XML file(s) |
 | `proxmox` | PVE version, optionally QEMU, LXC, running kernel | API token, PVEAuditor role |
 | `opnsense` | OPNsense, its FreeBSD base and OpenSSL, plus OpenSSH, Unbound, dnsmasq, Suricata and other packages | API key/secret |
 | `unifi` | UniFi Network version and every adopted device's firmware | Control Plane API key |
@@ -82,6 +83,34 @@ credential is sent. Without a pin or `verify_tls = true`, cvescope refuses to co
 
 If a collector fails (device offline, token expired), its last known versions are kept and
 the page marks it, so one outage doesn't make your matches vanish.
+
+### Finding gear you forgot about
+
+cvescope never scans anything itself. It only knows what you list. To cover the NAS, camera
+or old VM nobody remembers, run an nmap version scan yourself, on networks you're allowed to
+scan, and point an `nmap_xml` collector at the output:
+
+```bash
+nmap -sV -oX ~/scans/lan.xml 192.168.1.0/24
+```
+
+```toml
+[[inventory]]
+type = "nmap_xml"
+path = "~/scans/*.xml"        # a file, a glob, or a list
+hosts = ["192.168.1.0/24"]    # optional: only these CIDRs, IPs or hostnames
+max_age_days = 30             # skip stale scans
+```
+
+Every open service nmap identified becomes an item, named like `OpenSSH (nas.lan:22)`, using
+nmap's CPE where it has one. The same product on several ports of a host becomes one item. A
+version string with a distro build in it ("9.6p1 Ubuntu 3ubuntu13.5") is treated like a distro
+package, so in-range hits show as "check". Services nmap named but couldn't version are left
+out unless you set `unversioned = true`. When several files cover the same host, the newest
+scan wins. Re-run the scan on your own schedule (cron, Task Scheduler) and the next
+`cvescope sync` picks it up.
+
+Your IDS will see the scan. If you run one, plan for the alerts.
 
 ## How matching works
 

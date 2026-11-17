@@ -1,5 +1,7 @@
 """Inventory collectors. Each [[inventory]] entry in the config names a `type`.
 
+Types: static, command, dpkg, http_json, nmap_xml, proxmox, pihole, homeassistant, unifi, opnsense.
+
 A collector returns a list of items:
   {name, vendor, product, version, aliases: ["vendor:product", ...], keywords: [...], extra: {}}
 
@@ -53,8 +55,9 @@ def item(name, vendor="", product="", version=None, aliases=(), keywords=(), **e
 
 
 def _registry():
-    from . import appliances, generic
+    from . import appliances, generic, nmap
     return {
+        "nmap_xml": nmap.nmap_xml,
         "static": generic.static,
         "command": generic.command,
         "dpkg": generic.dpkg,
@@ -77,7 +80,7 @@ def run(con, cfg, verbose: bool = False) -> list[dict]:
             continue
         typ = entry.get("type", "static")
         fn = reg.get(typ)
-        label = entry.get("name") or entry.get("url") or entry.get("host") or f"{typ}#{n}"
+        label = entry.get("name") or entry.get("url") or entry.get("host") or entry.get("path") or f"{typ}#{n}"
         try:
             if fn is None:
                 raise RuntimeError(f"unknown inventory type {typ!r}")
@@ -97,7 +100,7 @@ def run(con, cfg, verbose: bool = False) -> list[dict]:
             if not items:
                 items = [item(label)]
         for it in items:
-            if len(items) == 1 and entry.get("name") and typ != "static":
+            if len(items) == 1 and entry.get("name") and typ not in ("static", "dpkg", "nmap_xml"):
                 it["name"] = entry["name"]
             it["aliases"] = list(dict.fromkeys(it["aliases"] + [a.lower() for a in entry.get("aliases", [])]))
             it["keywords"] = list(dict.fromkeys(it["keywords"] + list(entry.get("keywords", []))))

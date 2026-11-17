@@ -87,6 +87,15 @@ version = "30.0.4"
 # path = "version"
 # verify_tls = true
 
+# Services from an nmap version scan you ran yourself (cvescope never scans):
+#   nmap -sV -oX ~/scans/lan.xml 192.168.1.0/24
+# [[inventory]]
+# type = "nmap_xml"
+# path = "~/scans/*.xml"          # file, glob, or list
+# hosts = ["192.168.1.0/24"]      # optional filter
+# max_age_days = 30               # skip scans older than this (0 = no limit)
+# unversioned = false             # true: also services nmap couldn't version (noisy)
+
 # Proxmox VE (an API token with the PVEAuditor role is enough)
 # Get a self-signed cert's pin with: cvescope pin 192.168.1.10:8006
 # [[inventory]]

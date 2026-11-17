@@ -92,6 +92,44 @@ APPS: dict[str, tuple[str, list[str]]] = {
 }
 
 
+# nmap -sV product names (lowercase) -> (display name, aliases). Prefix match is allowed,
+# so "apache httpd" also covers "Apache httpd 2.4" style strings.
+NMAP: dict[str, tuple[str, list[str]]] = {
+    "openssh": PACKAGES["openssh"],
+    "dropbear sshd": PACKAGES["dropbear"],
+    "apache httpd": PACKAGES["apache2"],
+    "nginx": PACKAGES["nginx"],
+    "lighttpd": PACKAGES["lighttpd"],
+    "dnsmasq": PACKAGES["dnsmasq"],
+    "isc bind": PACKAGES["bind9"],
+    "unbound": PACKAGES["unbound"],
+    "samba smbd": PACKAGES["samba"],
+    "exim smtpd": PACKAGES["exim4"],
+    "postfix smtpd": PACKAGES["postfix"],
+    "squid http proxy": PACKAGES["squid"],
+    "haproxy http proxy": PACKAGES["haproxy"],
+    "openvpn": PACKAGES["openvpn"],
+    "mosquitto": PACKAGES["mosquitto"],
+    "cups": PACKAGES["cups"],
+    "microsoft iis httpd": ("Microsoft IIS", ["microsoft:internet information services", "microsoft:iis"]),
+    "apache tomcat": ("Apache Tomcat", ["apache software foundation:apache tomcat", "apache:tomcat"]),
+    "jetty": ("Jetty", ["eclipse:jetty", "eclipse foundation:eclipse jetty"]),
+    "mysql": ("MySQL", ["oracle:mysql", "oracle:mysql server", "mysql:mysql"]),
+    "mariadb": APPS["mariadb"],
+    "postgresql db": ("PostgreSQL", ["postgresql:postgresql", "postgresql global development group:postgresql"]),
+    "redis key-value store": ("Redis", ["redis:redis", "redis labs:redis"]),
+    "mongodb": ("MongoDB", ["mongodb:mongodb", "mongodb:mongodb server"]),
+    "elasticsearch rest api": ("Elasticsearch", ["elastic:elasticsearch"]),
+    "proftpd": ("ProFTPD", ["proftpd:proftpd", "proftpd project:proftpd"]),
+    "vsftpd": ("vsftpd", ["beasts:vsftpd", "vsftpd project:vsftpd"]),
+    "pure-ftpd": ("Pure-FTPd", ["pureftpd:pure ftpd"]),
+    "caddy httpd": ("Caddy", ["caddyserver:caddy"]),
+    "openresty web app server": ("OpenResty", ["openresty:openresty"]),
+    "miniupnp": ("MiniUPnP", ["miniupnp project:miniupnpd", "miniupnp:miniupnpd"]),
+    "vmware esxi": ("VMware ESXi", ["vmware:esxi"]),
+}
+
+
 def pkg_version(v: str) -> str:
     """Upstream part of a distro version: '1:9.6p1-3ubuntu13.5' -> '9.6p1', '3.0.18,1' -> '3.0.18'."""
     v = v.strip()
