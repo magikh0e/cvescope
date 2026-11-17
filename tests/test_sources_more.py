@@ -161,6 +161,57 @@ class Software(Tmp):
         self.assertEqual(items, {"Firefox (mac1)"})
 
 
+class OsqueryLive(unittest.TestCase):
+    """Live mode with a fake osqueryi: one canned answer per query."""
+
+    def fake(self, answers):
+        def q(sql):
+            for key, rows in answers.items():
+                if key in sql:
+                    return rows
+            return []
+        return q
+
+    def test_ubuntu_host(self):
+        q = self.fake({
+            "os_version": [{"name": "Ubuntu", "major": "24", "minor": "4", "platform": "ubuntu",
+                            "platform_like": "debian", "codename": "noble"}],
+            "deb_packages": [{"name": "openssh-server", "version": "1:9.6p1-3ubuntu13.5", "source": "openssh", "arch": "amd64"}],
+            "kernel_info": [{"version": "6.8.0-45-generic"}],
+            "system_info": [{"hostname": "box1"}],
+        })
+        host, rows = software.live_rows({}, q)
+        items = {i["name"]: i for i in software._items_for_host(host, rows, False)}
+        self.assertEqual(items["OpenSSH (box1)"]["extra"]["distro"], "ubuntu:noble")
+        k = items["Linux kernel (box1)"]
+        self.assertEqual((k["version"], k["extra"]["package_version"]), ("6.8.0", "6.8.0-45.45"))
+
+    def test_windows_host(self):
+        q = self.fake({
+            "os_version": [{"name": "Microsoft Windows 11 Pro", "build": "26100", "major": "10", "platform": "windows",
+                            "revision": "2314"}],
+            "registry": [{"name": "DisplayVersion", "data": "24H2"}],
+            "programs": [{"name": "Google Chrome", "version": "131.0.6778.86", "publisher": "Google LLC"}],
+        })
+        host, rows = software.live_rows({"name": "pc1"}, q)
+        items = {i["name"]: i for i in software._items_for_host(host, rows, False)}
+        self.assertEqual(items["Microsoft Windows 11 Pro (pc1)"]["version"], "10.0.26100.2314")
+        self.assertIn("microsoft:windows 11 version 24h2", items["Microsoft Windows 11 Pro (pc1)"]["aliases"])
+        self.assertIn("Google Chrome (pc1)", items)
+
+    def test_mac_homebrew(self):
+        q = self.fake({
+            "os_version": [{"name": "macOS", "major": "15", "platform": "darwin"}],
+            "FROM apps": [{"name": "Firefox.app", "version": "131.0"}],
+            "homebrew_packages": [{"name": "openssl@3", "version": "3.4.0"}, {"name": "curl", "version": "8.11.0"}],
+        })
+        host, rows = software.live_rows({"name": "mac"}, q)
+        items = {i["name"]: i for i in software._items_for_host(host, rows, False)}
+        self.assertEqual(items["OpenSSL (mac)"]["version"], "3.4.0")
+        self.assertFalse(items["curl (mac)"]["extra"].get("backports"))
+        self.assertIn("Firefox (mac)", items)
+
+
 class WebScan(Tmp):
     def test_wpscan(self):
         p = self.write("blog.json", json.dumps({

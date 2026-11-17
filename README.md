@@ -69,7 +69,7 @@ Each `[[inventory]]` block in the config is one collector:
 | `http_json` | a version field from any JSON endpoint | URL + dotted path |
 | `nmap_xml` | every open service nmap identified in a `-sV` scan you ran | the XML file(s) |
 | `docker` | the app in each running Docker/Podman container, from its image tag or version label | `docker ps` (local or ssh) |
-| `osquery` | installed programs, apps and packages from osquery output or `examples/windows-inventory.ps1` | the JSON file(s) |
+| `osquery` | installed programs, apps and packages, live through `osqueryi` (local or ssh) or from saved results | osquery, or the JSON file(s) |
 | `wpscan` | WordPress core, theme and plugin versions from a WPScan report | the JSON file(s) |
 | `whatweb` | web stack versions (server, PHP, CMS, JS libraries) from WhatWeb | the JSON file(s) |
 | `proxmox` | PVE version, every VM/container (OS via the guest agent), optionally QEMU, LXC, kernel | API token, PVEAuditor role |
@@ -116,11 +116,26 @@ applies to `osquery` `deb_packages` results and to Debian/Ubuntu VMs found throu
   and names the app in each container from its image. A floating tag like `latest` is resolved
   through the image's version label; if there isn't one, the container is listed but not matched.
   This covers the app, not the OS packages inside the image (use an SBOM tool for those).
-- **`osquery`** reads `osqueryi --json` output, osqueryd result logs, or the JSON written by
-  [`examples/windows-inventory.ps1`](examples/windows-inventory.ps1). That script records the
-  exact Windows build including the update revision, so Microsoft's CVE ranges match precisely,
-  plus every installed program. About 50 common programs are mapped by name (browsers, archivers,
-  remote-access and VPN clients, dev tools); `programs = "all"` adds the rest by name.
+- **`osquery`** works two ways. Without a `path`, cvescope runs `osqueryi` itself, on this
+  machine or through `command_prefix = ["ssh", "host"]`, and picks queries for the OS it finds:
+  `programs` plus the exact build and update revision on Windows, `apps` and Homebrew on macOS,
+  `deb_packages` or `rpm_packages` plus `kernel_info` on Linux. You can replace them with your own
+  `queries = [...]`. With a `path`, it reads saved results instead: `osqueryi --json` output,
+  osqueryd result logs, or the JSON written by
+  [`examples/windows-inventory.ps1`](examples/windows-inventory.ps1) on machines without osquery.
+  Either way, the exact Windows build means Microsoft's CVE ranges match precisely, and Debian or
+  Ubuntu packages go through the distro tracker. About 50 common programs are mapped by name
+  (browsers, archivers, remote-access and VPN clients, dev tools); `programs = "all"` adds the rest.
+  osquery only reads the host's own state, so this doesn't change cvescope's never-scans rule.
+
+  ```toml
+  [[inventory]]
+  type = "osquery"                 # this machine, live
+  [[inventory]]
+  type = "osquery"
+  name = "nas"
+  command_prefix = ["ssh", "nas"]  # another host, live over ssh
+  ```
 - **`wpscan`** and **`whatweb`** read reports from those scanners. Run them only against sites
   you're allowed to test.
 

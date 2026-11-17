@@ -87,8 +87,19 @@ version = "30.0.4"
 # command_prefix = ["ssh", "vps"]
 # engine = "docker"                 # or "podman"
 
-# Installed software: osquery JSON output, osqueryd result logs, or the JSON from
-# examples/windows-inventory.ps1 (exact Windows build + installed programs)
+# Installed software through osquery. Live: cvescope runs osqueryi with per-OS queries
+# (Windows programs + exact build, macOS apps + Homebrew, deb/rpm packages + kernel).
+# [[inventory]]
+# type = "osquery"                  # this machine
+# [[inventory]]
+# type = "osquery"
+# name = "nas"
+# command_prefix = ["ssh", "nas"]   # another host over ssh
+# osqueryi = "/usr/bin/osqueryi"    # only if it isn't on PATH / in the usual place
+# queries = ["SELECT name, version FROM programs"]   # replaces the defaults
+#
+# Or saved results: osqueryi --json output, osqueryd result logs, or the JSON from
+# examples/windows-inventory.ps1 (for machines without osquery)
 # [[inventory]]
 # type = "osquery"
 # path = "~/inventory/*.json"
