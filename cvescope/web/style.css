@@ -24,8 +24,8 @@ button { font: inherit; color: inherit; }
   position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 18px;
   padding: 10px 18px; background: var(--panel); border-bottom: 1px solid var(--line);
 }
-.brand { font: 600 17px var(--mono); letter-spacing: .5px; white-space: nowrap; }
-.mark { color: var(--accent); }
+.brand { font: 600 17px var(--mono); letter-spacing: .5px; white-space: nowrap; display: flex; align-items: center; gap: 8px; }
+.mark { display: block; border-radius: 5px; }
 .totals { display: flex; gap: 8px; flex-wrap: wrap; }
 .total { white-space: nowrap; padding: 3px 10px; border-radius: 999px; font: 600 12px var(--mono); border: 1px solid transparent; cursor: pointer; background: none; }
 .total.act { color: var(--act); background: var(--act-bg); }

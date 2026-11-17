@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- simplified cvescope mark for small sizes: reticle, crosshair, the one dot that matters -->
+  <rect width="64" height="64" rx="12" fill="#222629"/>
+  <g fill="none" stroke="#6fd295" stroke-linecap="round">
+    <circle cx="32" cy="32" r="22" stroke-width="3"/>
+    <circle cx="32" cy="32" r="17" stroke-width="1.6" stroke-dasharray="1.2 3.2" opacity=".85"/>
+    <path d="M32 4v11M32 49v11M4 32h11M49 32h11" stroke-width="3"/>
+  </g>
+  <circle cx="38.5" cy="25.5" r="2.4" fill="#f86825"/>
+  <circle cx="42" cy="32" r="2.4" fill="#f7ab3f"/>
+  <circle cx="32" cy="32" r="3.6" fill="#f82143"/>
+</svg>

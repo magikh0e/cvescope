@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/logo-512.png" width="220" height="220" alt="cvescope logo: a mint targeting reticle over a grid of dim dots, with one red and two amber dots lit inside it"></p>
+
 # cvescope
 
 The CVEs that hit the gear you actually run, ranked by whether anyone is exploiting them.
