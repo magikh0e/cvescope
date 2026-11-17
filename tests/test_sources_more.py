@@ -123,6 +123,38 @@ class NoiseRules(unittest.TestCase):
         self.assertEqual(ids, {"CVE-A"})
 
 
+class Health(unittest.TestCase):
+    def setUp(self):
+        self.con = db.connect(":memory:")
+        self.cfg = {"serve": {"stale_after_hours": 12}}
+        import datetime
+        self.now = datetime.datetime(2026, 11, 17, 12, 0, tzinfo=datetime.timezone.utc)
+
+    def test_never_synced(self):
+        from cvescope import query
+        h = query.health(self.con, self.cfg, self.now)
+        self.assertEqual((h["level"], h["stale"]), ("bad", True))
+
+    def test_fresh_and_stale(self):
+        from cvescope import query
+        db.meta_set(self.con, "last_sync", {"finished": "2026-11-17T10:00:00Z", "failed_feeds": [],
+                                            "failed_collectors": []})
+        h = query.health(self.con, self.cfg, self.now)
+        self.assertEqual((h["level"], round(h["age_hours"])), ("ok", 2))
+        db.meta_set(self.con, "last_sync", {"finished": "2026-11-16T20:00:00Z", "failed_feeds": [],
+                                            "failed_collectors": []})
+        self.assertEqual(query.health(self.con, self.cfg, self.now)["level"], "bad")
+
+    def test_failures_warn(self):
+        from cvescope import query
+        db.meta_set(self.con, "last_sync", {"finished": "2026-11-17T11:00:00Z", "failed_feeds": ["epss"],
+                                            "failed_collectors": ["pihole:pihole2"]})
+        h = query.health(self.con, self.cfg, self.now)
+        self.assertEqual(h["level"], "warn")
+        self.assertEqual(h["failed_collectors"], ["pihole2"])
+        self.assertEqual(len(h["problems"]), 2)
+
+
 class Guests(unittest.TestCase):
     def test_debian_vm(self):
         out = _guest_os({"id": "debian", "name": "Debian GNU/Linux", "version-id": "13",

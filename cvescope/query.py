@@ -5,6 +5,8 @@ from __future__ import annotations
 import datetime as dt
 import json
 
+from . import db
+
 TIER_LABEL = {"act": "Act now", "watch": "Watch", "info": "Info"}
 TIER_ORDER = {"act": 0, "watch": 1, "info": 2}
 STATUS_ORDER = {"affected": 0, "check": 1, "keyword": 2, "not_affected": 3}
@@ -184,6 +186,37 @@ def events(con, cfg, days=7, matched_only=True, limit=500) -> list[dict]:
     return rows
 
 
+def health(con, cfg, now: dt.datetime | None = None) -> dict:
+    """Is the data current? Uses the record each full `cvescope sync` leaves behind."""
+    ls = db.meta_get(con, "last_sync") or {}
+    finished = ls.get("finished")
+    limit = float(cfg["serve"].get("stale_after_hours", 12))
+    now = now or dt.datetime.now(dt.timezone.utc)
+    age = None
+    if finished:
+        try:
+            age = (now - dt.datetime.fromisoformat(finished.replace("Z", "+00:00"))).total_seconds() / 3600
+        except ValueError:
+            age = None
+    feeds = list(ls.get("failed_feeds") or [])
+    collectors = [c.split(":", 1)[-1] for c in ls.get("failed_collectors") or []]
+    problems = []
+    if not finished:
+        problems.append("No full sync recorded yet. Run `cvescope sync`, or check that the scheduled sync is set up.")
+    elif age is not None and age > limit:
+        problems.append(f"The last full sync finished {age:.0f} hours ago (the limit is {limit:.0f}). "
+                        "The scheduled sync may have stopped: check it and its log.")
+    if feeds:
+        problems.append(f"Feeds that failed in the last sync: {', '.join(feeds)}. Their data is from an older run.")
+    if collectors:
+        problems.append(f"Collectors that failed in the last sync, so their items show the last known versions: "
+                        f"{', '.join(collectors)}.")
+    stale = not finished or (age is not None and age > limit)
+    return {"finished": finished, "age_hours": age, "stale": stale, "stale_after_hours": limit,
+            "failed_feeds": feeds, "failed_collectors": collectors, "problems": problems,
+            "level": "bad" if stale else ("warn" if problems else "ok")}
+
+
 def summary(con, cfg) -> dict:
     items = [dict(r) for r in con.execute("SELECT id,name,version,collector,error,seen,extra FROM item ORDER BY collector, name")]
     ms = matches(con, cfg)
@@ -202,7 +235,7 @@ def summary(con, cfg) -> dict:
     totals = {"act": 0, "watch": 0, "info": 0}
     for m in ms:
         totals[m["tier"]] += 1
-    return {"items": items, "sources": src, "totals": totals,
+    return {"items": items, "sources": src, "totals": totals, "health": health(con, cfg),
             "cves": con.execute("SELECT count(*) FROM cve").fetchone()[0],
             "epss_date": (con.execute("SELECT max(date) FROM epss").fetchone() or [None])[0]}
 

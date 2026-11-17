@@ -12,10 +12,12 @@
 <header class="top">
   <div class="brand"><img class="mark" src="/favicon.svg" alt="" width="24" height="24"> cvescope</div>
   <div class="totals" id="totals"></div>
+  <span class="health" id="health" role="status"></span>
   <form class="search" id="searchForm" role="search">
     <input id="q" type="search" placeholder="CVE ID or keyword" autocomplete="off" aria-label="Search CVEs">
   </form>
 </header>
+<div class="banner" id="healthBanner" role="alert" hidden></div>
 
 <div class="layout">
   <aside class="inv" aria-label="Inventory">

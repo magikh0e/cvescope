@@ -49,6 +49,7 @@ keyword_matches = false   # also alert on keyword-only (low confidence) matches
 [serve]
 host = "127.0.0.1"   # the page is a map of your holes: keep it local
 port = 8096
+stale_after_hours = 12   # warn on the page when the last full sync is older than this
 
 # ============================ inventory ============================
 # Every [[inventory]] block is one collector. Common keys:

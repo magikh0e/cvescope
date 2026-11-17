@@ -19,10 +19,11 @@ def cmd_sync(cfg, a):
     from . import sources
     con = _con(cfg)
     only = a.only.split(",") if a.only else None
+    started = db.now()
     # inventory first: the distro source fetches only the releases your hosts run
     if not a.no_inventory and not only:
         cmd_inventory(cfg, a, con=con, quiet=True)
-    sources.run(con, cfg, only=only, rebaseline=a.rebaseline, verbose=a.verbose)
+    results = sources.run(con, cfg, only=only, rebaseline=a.rebaseline, verbose=a.verbose)
     if not only or "match" in (only or []):
         from . import match
         print("[match]")
@@ -31,6 +32,15 @@ def cmd_sync(cfg, a):
         from . import notify
         print("[notify]")
         print("  " + notify.run(con, cfg, dry_run=a.dry_run))
+    if not only:
+        # the page and `cvescope status` use this to spot a schedule that quietly stopped
+        failed_collectors = [r[0] for r in con.execute(
+            "SELECT DISTINCT collector FROM item WHERE error IS NOT NULL ORDER BY collector")]
+        db.meta_set(con, "last_sync", {
+            "started": started, "finished": db.now(), "version": __version__,
+            "failed_feeds": sorted(n for n, m in results.items() if m.startswith("ERROR")),
+            "failed_collectors": failed_collectors,
+        })
     return 0
 
 
@@ -100,8 +110,14 @@ def cmd_events(cfg, a):
 
 def cmd_status(cfg, a):
     con = _con(cfg)
+    from . import query
     print(f"config: {cfg.path or '(none: defaults)'}")
     print(f"data:   {cfg.db_path}")
+    h = query.health(con, cfg)
+    print(f"last full sync: {h['finished'] or 'never'}"
+          + (f" ({h['age_hours']:.1f} h ago)" if h["age_hours"] is not None else ""))
+    for line in h["problems"]:
+        print(f"  !! {line}")
     for r in con.execute("SELECT name,last_ok,last_try,last_error FROM source ORDER BY name"):
         state = "ok " if not r["last_error"] else "ERR"
         print(f"  {state} {r['name']:<22} last ok {r['last_ok'] or 'never':<22} {r['last_error'] or ''}")

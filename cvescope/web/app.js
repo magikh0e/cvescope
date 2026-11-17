@@ -44,6 +44,7 @@ async function loadSummary() {
     h("button", { class: "total watch", type: "button", title: "Public exploit or likely", onclick: () => showTiers(false) }, `${s.totals.watch} watch`),
     h("button", { class: "total info", type: "button", title: "Matches with no known exploit", onclick: () => showTiers(true) }, `${s.totals.info} info`),
   );
+  renderHealth(s.health);
   const ul = $("#items");
   ul.replaceChildren();
   let group = null;
@@ -69,6 +70,26 @@ async function loadSummary() {
     h("div", { title: x.last_error || "" }, h("span", { text: x.name }),
       h("span", { class: x.last_error ? "err" : "muted", text: x.last_error ? "error" : day(x.last_ok) }))),
     h("div", {}, h("span", { class: "muted", text: `${s.cves.toLocaleString()} CVEs` }), h("span", { class: "muted", text: s.epss_date ? "EPSS " + s.epss_date : "" })));
+}
+
+// ---------- sync health ----------
+function ago(hours) {
+  if (hours == null) return "";
+  if (hours < 1) return `${Math.max(1, Math.round(hours * 60))} min ago`;
+  if (hours < 48) return `${Math.round(hours)} h ago`;
+  return `${Math.round(hours / 24)} days ago`;
+}
+
+function renderHealth(hl) {
+  const chip = $("#health"), banner = $("#healthBanner");
+  if (!hl) { chip.textContent = ""; banner.hidden = true; return; }
+  chip.className = `health ${hl.level}`;
+  chip.textContent = hl.finished ? `${hl.level === "ok" ? "" : "⚠ "}synced ${ago(hl.age_hours)}` : "⚠ never synced";
+  chip.title = hl.problems.length ? hl.problems.join("\n") : `last full sync ${hl.finished}`;
+  if (hl.level === "ok") { banner.hidden = true; return; }
+  banner.className = `banner ${hl.level}`;
+  banner.replaceChildren(...hl.problems.map((p) => h("p", { text: p })));
+  banner.hidden = false;
 }
 
 function selectItem(id) {

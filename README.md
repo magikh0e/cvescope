@@ -269,6 +269,10 @@ Register-ScheduledTask -TaskName cvescope-sync -Action $a -Trigger $t -Settings 
 
 If you run from a checkout instead, add `-WorkingDirectory <repo>` to the action.
 
+Every full sync leaves a record, and the page's header shows when the last one finished. If it's
+older than `serve.stale_after_hours` (default 12), or a feed or collector failed, a banner says so,
+and so does `cvescope status`. A schedule that quietly stopped won't go unnoticed.
+
 ## Keep the page private
 
 The page is a list of what's vulnerable in your network. It binds to 127.0.0.1 and rejects
