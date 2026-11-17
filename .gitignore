@@ -1,0 +1,16 @@
+# your real config holds hostnames and credential paths: keep it out of git
+cvescope.toml
+config.toml
+*.db
+*.db-wal
+*.db-shm
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+.venv/
+.claude/
+
+# screenshots of a real network: they show what is vulnerable where
+screenshots/

@@ -1,0 +1,126 @@
+# cvescope config. Copy to one of:
+#   ./cvescope.toml
+#   ~/.config/cvescope/config.toml          (Linux/macOS)
+#   %APPDATA%\cvescope\config.toml          (Windows)
+# or point CVESCOPE_CONFIG / --config at it.
+#
+# Secrets never go in this file: use *_file (a file holding just the secret) or *_env.
+
+# data_dir = "/var/lib/cvescope"   # default: ~/.local/share/cvescope or %LOCALAPPDATA%\cvescope (~800 MB)
+
+[tiers]
+epss_watch_pct = 0.90   # EPSS percentile that lifts a match from "info" to "watch"
+epss_jump = 0.25        # alert when a matched CVE's EPSS percentile rises this much at once
+
+[sources]
+cvelist = true          # CVE List (cvelistV5): ~660 MB download on the first run, small deltas after
+kev = true              # CISA Known Exploited Vulnerabilities
+epss = true             # FIRST EPSS daily scores
+metasploit = true       # Metasploit module metadata (~11 MB)
+nuclei = true           # Nuclei CVE templates index
+exploitdb = true        # Exploit-DB index
+github_poc = true       # nomi-sec/PoC-in-GitHub, shallow git clone (~85 MB, needs git)
+
+# Your own exploit/advisory folders: any file that mentions a CVE gets linked to it.
+# [[sources.local_archive]]
+# name = "my archive"
+# path = "~/exploits"
+# base_url = "https://example.org/exploits/"   # optional, makes the links clickable
+# extensions = [".txt", ".py", ".rb", ".c"]    # optional filter
+
+[notify]
+min_tier = "act"          # act | watch | info
+keyword_matches = false   # also alert on keyword-only (low confidence) matches
+
+# [[notify.ntfy]]
+# url = "https://ntfy.sh/pick-a-long-random-topic"
+# token_env = "NTFY_TOKEN"          # optional
+
+# [[notify.homeassistant]]
+# url = "http://homeassistant.local:8123"
+# token_env = "HASS_TOKEN"
+# service = "notify.mobile_app_your_phone"
+
+# [[notify.webhook]]
+# url = "https://hooks.example.org/cvescope"   # receives {"title": ..., "message": ...}
+
+[serve]
+host = "127.0.0.1"   # the page is a map of your holes: keep it local
+port = 8096
+
+# ============================ inventory ============================
+# Every [[inventory]] block is one collector. Common keys:
+#   name, aliases = ["vendor:product", ...], keywords = [...], enabled = false
+# Aliases are how CVE records name the product (lowercase, punctuation -> space).
+# "vendor:product*" is a prefix match; "*:product" matches any vendor.
+
+# Something you type in yourself
+[[inventory]]
+type = "static"
+name = "Nextcloud"
+vendor = "nextcloud"
+product = "nextcloud server"
+version = "30.0.4"
+
+# A version read from a command, e.g. over ssh. `package` reuses the built-in aliases.
+# [[inventory]]
+# type = "command"
+# name = "OpenSSH on the VPS"
+# command = ["ssh", "vps", "ssh -V"]
+# regex = 'OpenSSH_([0-9.p]+)'
+# package = "openssh-server"
+
+# Known packages from a Debian/Ubuntu box. Distro fixes get backported, so in-range
+# hits show as "check" instead of "affected".
+# [[inventory]]
+# type = "dpkg"
+# name = "web1"
+# command = ["ssh", "web1", "dpkg-query -W -f='${Package} ${Version}\\n'"]
+
+# Any JSON endpoint that reports a version
+# [[inventory]]
+# type = "http_json"
+# name = "Grafana"
+# vendor = "grafana"
+# product = "grafana"
+# url = "https://grafana.lan/api/health"
+# path = "version"
+# verify_tls = true
+
+# Proxmox VE (an API token with the PVEAuditor role is enough)
+# Get a self-signed cert's pin with: cvescope pin 192.168.1.10:8006
+# [[inventory]]
+# type = "proxmox"
+# url = "https://192.168.1.10:8006"
+# token_file = "~/.secrets/pve-token"     # user@pve!tokenid=secret
+# pin_sha256 = "AB:CD:..."
+# packages = true                          # also QEMU, LXC, running kernel
+
+# OPNsense (API key + secret of a user with read access to firmware/diagnostics)
+# [[inventory]]
+# type = "opnsense"
+# url = "https://192.168.1.1"
+# key_file = "~/.secrets/opnsense-key"
+# secret_file = "~/.secrets/opnsense-secret"
+# pin_sha256 = "..."
+
+# UniFi Network (Control Plane API key; devices = adopted APs/switches + firmware)
+# [[inventory]]
+# type = "unifi"
+# url = "https://192.168.1.1"
+# apikey_file = "~/.secrets/unifi-key"
+# pin_sha256 = "..."
+
+# Pi-hole v6 (logs in, reads versions, logs out)
+# [[inventory]]
+# type = "pihole"
+# name = "pihole"
+# url = "https://192.168.1.2"
+# password_file = "~/.secrets/pihole"
+# pin_sha256 = "..."
+
+# Home Assistant (long-lived token; add-ons and OS need an admin token)
+# [[inventory]]
+# type = "homeassistant"
+# url = "http://homeassistant.local:8123"
+# token_env = "HASS_TOKEN"

@@ -1,0 +1,107 @@
+# A made-up network full of old versions, to see cvescope work before you point it at
+# your own gear:
+#
+#   cvescope --config examples/demo.toml sync
+#   cvescope --config examples/demo.toml serve
+#
+# It keeps its data in its own folder, so it never touches your real inventory.
+# The first sync still downloads the full CVE List (~750 MB).
+
+data_dir = "~/.cvescope-demo"
+
+[sources]
+github_poc = true
+
+[serve]
+port = 8098
+
+[[inventory]]
+type = "static"
+name = "FortiOS (edge firewall)"
+vendor = "fortinet"
+product = "fortios"
+version = "7.0.12"
+
+[[inventory]]
+type = "static"
+name = "Apache HTTP Server (web01)"
+vendor = "apache software foundation"
+product = "apache http server"
+version = "2.4.49"
+
+[[inventory]]
+type = "static"
+name = "OpenSSH (web01)"
+vendor = "openbsd"
+product = "openssh"
+version = "9.6p1"
+
+[[inventory]]
+type = "static"
+name = "Apache Tomcat (app01)"
+vendor = "apache software foundation"
+product = "apache tomcat"
+version = "9.0.80"
+
+[[inventory]]
+type = "static"
+name = "Jenkins (build box)"
+vendor = "jenkins project"
+product = "jenkins"
+version = "2.441"
+
+[[inventory]]
+type = "static"
+name = "TeamCity (build box)"
+vendor = "jetbrains"
+product = "teamcity"
+version = "2023.05.3"
+
+[[inventory]]
+type = "static"
+name = "GitLab CE"
+vendor = "gitlab"
+product = "gitlab"
+version = "16.0.0"
+
+[[inventory]]
+type = "static"
+name = "Grafana (monitoring)"
+vendor = "grafana"
+product = "grafana"
+version = "8.3.0"
+
+[[inventory]]
+type = "static"
+name = "Roundcube Webmail"
+vendor = "roundcube"
+product = "roundcube webmail"
+version = "1.6.0"
+
+[[inventory]]
+type = "static"
+name = "Nextcloud Server"
+vendor = "nextcloud"
+product = "nextcloud server"
+version = "27.0.0"
+
+[[inventory]]
+type = "static"
+name = "Jellyfin"
+vendor = "jellyfin"
+product = "jellyfin"
+version = "10.8.0"
+
+[[inventory]]
+type = "static"
+name = "Vaultwarden"
+vendor = "dani garcia"
+product = "vaultwarden"
+version = "1.30.0"
+
+[[inventory]]
+type = "static"
+name = "Redis (cache)"
+vendor = "redis"
+product = "redis"
+version = "7.0.11"

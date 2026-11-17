@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cvescope"
+version = "0.1.0"
+description = "Track the CVEs that hit the gear you actually run, ranked by real-world exploitation (KEV, EPSS, Metasploit, Nuclei, Exploit-DB, public PoCs)."
+readme = "README.md"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+dependencies = []
+keywords = ["cve", "vulnerability", "kev", "epss", "exploit", "homelab", "vulnerability-management"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Operating System :: OS Independent",
+  "Topic :: Security",
+  "Environment :: Console",
+  "Environment :: Web Environment",
+]
+
+[project.urls]
+Homepage = "https://github.com/magikh0e/cvescope"
+Issues = "https://github.com/magikh0e/cvescope/issues"
+
+[project.scripts]
+cvescope = "cvescope.cli:main"
+
+[tool.setuptools]
+packages = ["cvescope", "cvescope.sources", "cvescope.collectors"]
+
+[tool.setuptools.package-data]
+cvescope = ["web/*", "config.example.toml"]

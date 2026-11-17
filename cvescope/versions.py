@@ -1,0 +1,257 @@
+"""Version comparison and CVE 5.x affected[] evaluation.
+
+Good enough for appliance and app versions (8.2.4, 2026.11.1, v6.5, 1.0.2k, 2.0rc1, 9.6p1).
+Not a distro-package comparator: Debian/Ubuntu backports are flagged by the collector instead.
+"""
+
+from __future__ import annotations
+
+import re
+
+_TOK = re.compile(r"\d+|[a-z]+")
+_PRE = {"dev": -4, "snapshot": -4, "alpha": -3, "beta": -2, "pre": -2, "preview": -2, "rc": -1}
+_BLANK = {"", "*", "-", "n/a", "na", "unspecified", "unknown", "all", "all versions", "0"}
+
+
+def clean(v) -> str | None:
+    if v is None:
+        return None
+    s = str(v).strip().lower()
+    s = re.sub(r"^(version|ver\.?|release|v)\s*", "", s)
+    s = s.split("+")[0].strip()  # build metadata
+    if s in _BLANK or not s[:1].isdigit():
+        return None
+    return s
+
+
+_ONE = re.compile(r"\d+(?:\.\d+)+[a-z]?\d*(?:p\d+)?")
+
+
+def _single(v) -> str | None:
+    """An exact version, also from 'openssl-1.1.0a' or 'Affects OpenSSL 3.0.4' (one version, no range words)."""
+    c = clean(v)
+    if c:
+        return c
+    s = str(v or "").lower()
+    found = _ONE.findall(s)
+    if len(found) == 1 and not re.search(r"<|>|before|prior|through|later|earlier|since|after|below|above", s):
+        return found[0]
+    return None
+
+
+def key(v: str) -> list[tuple]:
+    out: list[tuple] = []
+    for t in _TOK.findall(v):
+        if t.isdigit():
+            out.append((3, int(t)))
+        elif t in _PRE:
+            out.append((0, _PRE[t]))
+        else:
+            out.append((2, t))  # post-release letter: 1.0.2k, 9.6p1
+    return out
+
+
+def cmp(a: str, b: str) -> int:
+    ka, kb = key(clean(a) or a.lower()), key(clean(b) or b.lower())
+    for i in range(max(len(ka), len(kb))):
+        x = ka[i] if i < len(ka) else None
+        y = kb[i] if i < len(kb) else None
+        # a missing token equals a trailing zero, beats a pre-release, loses to a letter
+        if x is None:
+            x = (3, 0) if y[0] == 3 else (1, "")
+        if y is None:
+            y = (3, 0) if x[0] == 3 else (1, "")
+        if x != y:
+            return -1 if x < y else 1
+    return 0
+
+
+# free-text ranges some CNAs put in "version": "< 2.3", "before 1.4.2", "1.0 - 1.5", "2.1 and earlier"
+_TXT = [
+    (re.compile(r"^(?:<|before|prior to|earlier than|below|lower than)\s*v?([0-9][\w.\-]*)$"), "lt"),
+    (re.compile(r"^(?:<=|=<|through|up to|up to and including)\s*v?([0-9][\w.\-]*)$"), "lte"),
+    (re.compile(r"^v?([0-9][\w.\-]*)\s*(?:and|or)\s*(?:earlier|prior|before|below|lower)(?: versions?)?$"), "lte"),
+    (re.compile(r"^v?([0-9][\w.\-]*)\s*(?:-|to|through|~)\s*v?([0-9][\w.\-]*)$"), "range"),
+    (re.compile(r"^>=?\s*v?([0-9][\w.\-]*)\s*,?\s*(?:and\s*)?<\s*v?([0-9][\w.\-]*)$"), "ltrange"),
+    (re.compile(r"^>=?\s*v?([0-9][\w.\-]*)\s*,?\s*(?:and\s*)?<=\s*v?([0-9][\w.\-]*)$"), "range"),
+]
+
+
+_OP = re.compile(r"(<=|=<|>=|<|>|\bbefore\b|\bprior to\b|\bthrough\b|\bup to\b|\bearlier than\b|\bbelow\b)")
+
+
+def _text_range(s: str):
+    s = s.strip().lower()
+    m = _OP.search(s)
+    if m and m.start() > 0 and not s[:1].isdigit():
+        s = s[m.start():]  # "Linux Kernel <= 3.1" -> "<= 3.1"
+    for rx, kind in _TXT:
+        m = rx.match(s)
+        if not m:
+            continue
+        if kind == "lt":
+            return (None, m.group(1), False)
+        if kind == "lte":
+            return (None, m.group(1), True)
+        if kind == "range":
+            return (m.group(1), m.group(2), True)
+        if kind == "ltrange":
+            return (m.group(1), m.group(2), False)
+    return None
+
+
+_AFFECTED_SPAN = re.compile(r"affected\s*:?\s*v?([0-9][\w.]*)\s*(?:-|to|through)\s*v?([0-9][\w.]*)", re.I)
+_FIXED_IN = re.compile(r"fixed in [a-z ]*?v?([0-9][\w.]*)", re.I)
+
+
+def _text_ranges(s: str):
+    """All ranges a free-text version field describes, as (lo, hi, inclusive) tuples."""
+    # OpenSSL: "Fixed in OpenSSL 1.1.1g (Affected 1.1.1d-1.1.1f). Fixed in 1.0.2u (Affected 1.0.2-1.0.2t)"
+    spans = _AFFECTED_SPAN.findall(s)
+    if spans:
+        return [(lo, hi.rstrip("."), True) for lo, hi in spans]
+    one = _text_range(s)
+    return [one] if one else []
+
+
+def _in(ver: str, lo: str | None, hi: str | None, inclusive: bool) -> bool | None:
+    """None = can't tell (unparseable bound)."""
+    lo_c = clean(lo) if lo else None
+    wild = bool(hi) and hi != "*" and hi.endswith("*")  # "6.1.*" = every 6.1.x
+    hi_c = clean(hi.rstrip("*").rstrip(".")) if hi and hi != "*" else None
+    if hi and hi != "*" and hi_c is None:
+        return None
+    if lo_c and cmp(ver, lo_c) < 0:
+        return False
+    if hi_c is None:
+        return True
+    if wild:
+        n = len(key(hi_c))
+        head = ".".join(str(t[1]) for t in key(ver)[:n])
+        return cmp(head, hi_c) <= 0
+    c = cmp(ver, hi_c)
+    return c <= 0 if inclusive else c < 0
+
+
+# ---- last resort: versions named in the description ----------------------
+# Old records (and many MITRE-era ones) say "n/a" for versions but the text reads
+# "OpenSSL 1.0.1 before 1.0.1g ...". If every version named right after the product
+# is older than what's installed, the CVE almost certainly predates it.
+
+_DESC_VER = re.compile(r"(?<![\w/.\-])v?(\d{1,4}(?:\.\d+){1,3}(?:[a-z]\d*)?)(?![\w]*\.\d)")
+_LATER = re.compile(r"\b(?:and|or) (?:later|above|newer|higher|greater|after)\b|\bonwards?\b|"
+                    r"\bsince (?:version |v)?\d|\bstarting (?:with|from|in)\b|\ball versions\b|"
+                    r"\bthrough the (?:current|latest)\b|>=|\bor greater\b", re.I)
+_NOT_PRODUCT = re.compile(r"\b(?:http/|https/|tls\s?v?|ssl\s?v?|ipv|rfc\s?|cvss:?\s?|smb\s?v?|snmp\s?v?|"
+                          r"oauth\s?|ntlm\s?v?|python\s?|php\s?|java\s?|node(?:\.js)?\s?|gpl\s?v?)$", re.I)
+_GENERIC = {"core", "web", "os", "server", "client", "app", "application", "network", "firmware"}
+
+
+def name_pattern(name: str) -> re.Pattern | None:
+    words = [w for w in re.split(r"[^a-z0-9]+", name.lower()) if w]
+    if not words or (len(words) == 1 and (len(words[0]) < 4 or words[0] in _GENERIC)):
+        return None
+    return re.compile(r"\b" + r"[\s\-_]*".join(map(re.escape, words)) + r"\b", re.I)
+
+
+_UPPER = re.compile(r"(?:prior to|before|through|up to and including|up to|earlier than|until|"
+                    r"upgrade to|update to|fixed in|<=?)\s*"
+                    r"(?:versions?\s+|v)?(\d{1,4}(?:\.\d+){1,3}(?:[a-z]\d*)?)", re.I)
+_SENT = re.compile(r"(?<=[.!?])\s+|\n+")
+
+
+def _max(vs):
+    best = None
+    for v in vs:
+        if best is None or cmp(v, best) > 0:
+            best = v
+    return best
+
+
+def desc_max(desc: str, patterns) -> str | None:
+    """Highest version the description pins on the product, or None if unsure.
+
+    Looks only at sentences that name the product. An explicit upper bound
+    ("prior to 5.18.3", "before 1.0.1g", "through 2.4") wins; otherwise open-ended
+    wording ("and later", "since") means we can't tell.
+    """
+    if not desc:
+        return None
+    allsents = _SENT.split(desc)
+    keep = set()
+    for i, s in enumerate(allsents):
+        if any(rx.search(s) for rx in patterns):
+            keep.update((i, i + 1))  # "...manage your Pi-hole. Versions 4.0 and above, prior to 5.18.3 are..."
+    sents = [allsents[i] for i in sorted(keep) if i < len(allsents)]
+    if not sents:
+        return None
+    text = " ".join(sents)
+    bounds = [m.group(1) for m in _UPPER.finditer(text)]
+    if bounds:
+        return _max(bounds)
+    if _LATER.search(text):
+        return None
+    found = []
+    for s in sents:
+        for v in _DESC_VER.finditer(s):
+            if _NOT_PRODUCT.search(s[: v.start()].rstrip()[-8:]):  # "TLS 1.3", "HTTP/1.1"
+                continue
+            found.append(v.group(1))
+    return _max(found)
+
+
+def eval_entry(entry: dict, version: str | None) -> tuple[str, str]:
+    """Evaluate one compact affected[] entry for an installed version.
+
+    Returns (status, reason) with status in affected | unaffected | unknown.
+    """
+    ver = clean(version)
+    if ver is None:
+        return "unknown", "no installed version"
+    hits: list[str] = []
+    parseable = False
+    listed_unaffected = False
+    for r in entry.get("vs") or []:
+        if (r.get("status") or "").lower() == "unaffected":
+            listed_unaffected = True
+        st = (r.get("status") or "affected").lower()
+        if (r.get("versionType") or "").lower() == "git":
+            continue
+        start = r.get("version")
+        lt, lte = r.get("lessThan"), r.get("lessThanOrEqual")
+        # FreeBSD style: version "14.3-RELEASE", lessThan "p7" = 14.3-RELEASE before patch 7
+        for name, val in (("lt", lt), ("lte", lte)):
+            if isinstance(val, str) and re.fullmatch(r"p\d+", val.strip().lower()) and start:
+                fixed = f"{start}-{val.strip()}"
+                lt, lte = (fixed, None) if name == "lt" else (None, fixed)
+        if lt is None and lte is None:
+            rngs = _text_ranges(str(start or ""))
+            if rngs:
+                outs = [_in(ver, lo, hi, inc) for lo, hi, inc in rngs]
+                res = None if all(o is None for o in outs) else any(bool(o) for o in outs)
+            elif _single(start):
+                res = cmp(ver, _single(start)) == 0
+            else:
+                res = None
+        else:
+            res = _in(ver, start, lte if lte is not None else lt, lte is not None)
+        if res is None:
+            continue
+        parseable = True
+        if res:
+            hits.append(st)
+    if "unaffected" in hits:
+        return "unaffected", "version listed as unaffected"
+    if "affected" in hits:
+        return "affected", "version inside an affected range"
+    if not parseable:
+        # defaultStatus alone says nothing about *your* version
+        return "unknown", "no usable version data"
+    ds = (entry.get("ds") or "").lower()
+    if ds == "affected" and not listed_unaffected:
+        # Many CNAs write defaultStatus "affected" next to a single "0 .. < fixed" range.
+        # Read literally that would flag every newer version; they mean "older than fixed".
+        return "unaffected", "outside every affected range"
+    if ds in ("affected", "unaffected"):
+        return ds, f"outside listed ranges (default {ds})"
+    return "unaffected", "outside every listed range"

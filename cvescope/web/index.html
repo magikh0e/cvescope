@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>cvescope</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="mark">&#9673;</span> cvescope</div>
+  <div class="totals" id="totals"></div>
+  <form class="search" id="searchForm" role="search">
+    <input id="q" type="search" placeholder="CVE ID or keyword" autocomplete="off" aria-label="Search CVEs">
+  </form>
+</header>
+
+<div class="layout">
+  <aside class="inv" aria-label="Inventory">
+    <div class="inv-head">
+      <h2>Inventory</h2>
+      <button class="linkish" id="allItems" type="button">all</button>
+    </div>
+    <ul id="items"></ul>
+    <div class="feeds" id="feeds"></div>
+  </aside>
+
+  <main>
+    <nav class="tabs" role="tablist">
+      <button role="tab" data-tab="exposure" class="on">Your exposure</button>
+      <button role="tab" data-tab="changes">Changes</button>
+      <button role="tab" data-tab="hot">Out in the wild</button>
+      <button role="tab" data-tab="search" hidden id="searchTab">Search</button>
+    </nav>
+
+    <section id="exposure" class="pane on">
+      <div class="filters">
+        <label><input type="checkbox" id="fInfo"> include info (no known exploit)</label>
+        <label><input type="checkbox" id="fKeyword"> include keyword-only matches</label>
+        <span class="muted" id="filterNote"></span>
+      </div>
+      <div id="matchList" class="list"></div>
+    </section>
+
+    <section id="changes" class="pane">
+      <div class="filters">
+        <label>last <select id="days"><option>1</option><option selected>7</option><option>30</option><option>90</option></select> days</label>
+        <label><input type="checkbox" id="fAllEvents"> include CVEs you don't run</label>
+      </div>
+      <div id="eventList" class="list"></div>
+    </section>
+
+    <section id="hot" class="pane"><div id="hotBody"></div></section>
+    <section id="search" class="pane"><div id="searchList" class="list"></div></section>
+  </main>
+
+  <aside class="detail" id="detail" aria-live="polite" hidden>
+    <button class="close" id="closeDetail" type="button" aria-label="Close">&times;</button>
+    <div id="detailBody"></div>
+  </aside>
+</div>
+<script src="/app.js"></script>
+</body>
+</html>

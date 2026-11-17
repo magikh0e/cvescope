@@ -1,0 +1,217 @@
+# cvescope
+
+The CVEs that hit the gear you actually run, ranked by whether anyone is exploiting them.
+
+There are 40,000+ new CVEs a year. Almost none of them matter to you. cvescope asks your
+firewall, hypervisor, DNS boxes and apps for their versions, matches them against the full
+CVE List, and sorts what's left by real-world evidence: CISA KEV, Metasploit and Nuclei
+coverage, Exploit-DB, public PoCs, and EPSS. Then it tells you when that evidence changes,
+like when a CVE you've been ignoring suddenly gets a Metasploit module.
+
+It runs on your own machine. Python 3.11+, standard library only, no account, no API keys.
+
+![Your exposure: matched CVEs ranked by exploitation evidence](docs/exposure.png)
+
+<sub>Screenshots use the made-up network in [`examples/demo.toml`](examples/demo.toml).</sub>
+
+## What you get
+
+- **Your exposure:** every matched CVE, split into three tiers:
+  - **Act now:** exploited in the wild (KEV, CISA SSVC "active"), a Metasploit exploit
+    module, or a Nuclei template for a CVSS 7+ bug.
+  - **Watch:** public exploit code (Exploit-DB, GitHub PoC, your own archive), a Metasploit
+    auxiliary module, SSVC "poc", or EPSS in the top 10%.
+  - **Info:** it matches, but nothing suggests anyone is using it.
+- **Changes:** a CVE that touches your inventory got added to KEV, picked up an exploit, had
+  its EPSS jump, or stopped applying after you upgraded.
+- **Out in the wild:** recent KEV additions, newly weaponized CVEs, and the highest-EPSS new
+  CVEs, whether you run the product or not.
+- **Alerts** via ntfy, Home Assistant, or any webhook, for changes at or above a tier you pick.
+
+## Quick start
+
+```bash
+git clone https://github.com/magikh0e/cvescope && cd cvescope
+pip install .                    # or skip this and use `python -m cvescope` from the checkout
+cvescope init                    # writes a starter config to your user config dir
+# edit it: add [[inventory]] blocks for your gear (see cvescope/config.example.toml)
+cvescope sync                    # first run downloads ~750 MB (CVE List + PoC index), ~800 MB on disk
+cvescope report                  # act-now and watch tiers in the terminal
+cvescope serve                   # the page at http://127.0.0.1:8096/
+```
+
+The first sync of each feed is treated as history: it loads quietly and raises no alerts.
+After that, run `cvescope sync` on a schedule (below) and only real changes come through.
+
+Want to see it work before wiring up your own gear? The demo config describes a small,
+badly patched network and keeps its data in a separate folder:
+
+```bash
+cvescope --config examples/demo.toml sync
+cvescope --config examples/demo.toml serve       # http://127.0.0.1:8098/
+```
+
+| CVE detail | Exploits and PoCs | On a phone |
+|---|---|---|
+| ![CVE detail panel](docs/detail.png) | ![Exploit sources and flagged PoCs](docs/exploits.png) | ![Phone layout](docs/mobile.png) |
+
+## Inventory
+
+Each `[[inventory]]` block in the config is one collector:
+
+| type | what it reads | needs |
+|---|---|---|
+| `static` | a product and version you type in | nothing |
+| `command` | a version pulled from any command's output (works over `ssh`) | the command |
+| `dpkg` | known packages on a Debian/Ubuntu host | `dpkg-query` over ssh |
+| `http_json` | a version field from any JSON endpoint | URL + dotted path |
+| `proxmox` | PVE version, optionally QEMU, LXC, running kernel | API token, PVEAuditor role |
+| `opnsense` | OPNsense, its FreeBSD base and OpenSSL, plus OpenSSH, Unbound, dnsmasq, Suricata and other packages | API key/secret |
+| `unifi` | UniFi Network version and every adopted device's firmware | Control Plane API key |
+| `pihole` | Pi-hole v6 core, FTL and web versions | app password |
+| `homeassistant` | HA Core (and OS + add-ons with an admin token) | long-lived token |
+
+Secrets never go in the config file. Point at them with `token_file` / `token_env`
+(or `password_file`, `apikey_file`, `key_file` + `secret_file`).
+
+Self-signed appliances: get the certificate fingerprint with `cvescope pin 192.168.1.1:443`,
+check it against the device's own UI, and set `pin_sha256`. The pin is checked before any
+credential is sent. Without a pin or `verify_tls = true`, cvescope refuses to connect.
+
+If a collector fails (device offline, token expired), its last known versions are kept and
+the page marks it, so one outage doesn't make your matches vanish.
+
+## How matching works
+
+The CVE List record for each CVE says which vendor/product/version ranges are affected.
+cvescope matches your items against those names (and the CPEs CISA's Vulnrichment adds),
+then checks your version against the ranges. Each match gets a status:
+
+- **affected:** your version is inside an affected range.
+- **check:** the product matches but the record can't settle your version, or it's a distro
+  package (Debian, Proxmox kernel, FreeBSD base) whose fixes may be backported. Look it up
+  in the vendor's or distro's tracker.
+- **not_affected:** your version is outside every affected range. Kept for the record and
+  counted as "ruled out" on the page.
+- **keyword:** an old CVE whose record names no product mentions your item in its text. Low
+  confidence, hidden unless you ask for it.
+
+Version data in CVE records is messy, so cvescope copes with a few common patterns: free text
+("before 2.4.60", "1.0 - 1.5", "Fixed in OpenSSL 1.1.1g (Affected 1.1.1d-1.1.1f)"), FreeBSD
+patch levels, CISA's habit of splitting one product into many single-range entries, and CNAs
+that set `defaultStatus: affected` next to a single "below the fix" range. When a record has
+no version data at all, it reads the description: if the only versions named next to the
+product are older than yours ("OpenSSL 1.0.1 before 1.0.1g"), the CVE is ruled out. Open-ended
+wording ("and later", "since") is left as **check**.
+
+Match quality depends mostly on aliases: how CVE records spell your product. The built-ins
+live in `cvescope/collectors/packages.py`; add your own per item with `aliases = [...]`.
+
+## Data sources
+
+| feed | what it adds | size / cadence |
+|---|---|---|
+| [CVE List](https://github.com/CVEProject/cvelistV5) | every CVE record, incl. CISA Vulnrichment (SSVC, CPEs, CVSS) | ~660 MB once, then hourly/daily delta zips |
+| [CISA KEV](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) | confirmed exploitation in the wild | ~2 MB, conditional GET |
+| [FIRST EPSS](https://www.first.org/epss/) | daily 30-day exploitation probability | ~3 MB/day |
+| [Metasploit](https://github.com/rapid7/metasploit-framework) module metadata | weaponized exploits and scanners | ~11 MB, conditional GET |
+| [Nuclei templates](https://github.com/projectdiscovery/nuclei-templates) `cves.json` | mass-scannable checks | ~2 MB |
+| [Exploit-DB](https://gitlab.com/exploit-database/exploitdb) index | published exploit code | ~10 MB |
+| [PoC-in-GitHub](https://github.com/nomi-sec/PoC-in-GitHub) | GitHub repos claiming a PoC | ~85 MB shallow clone, needs git |
+| your own folders | any file that mentions a CVE ID | local scan, only new files after the first run |
+
+The NVD is not used. Its analysis backlog means it often lags the CVE List itself.
+
+## A word on GitHub PoCs
+
+Fake proof-of-concept repos that drop malware on the people who run them are a long-running
+trick. cvescope never clones or fetches PoC repos. It lists their metadata and flags the usual
+tells (no stars or forks, no description, a pitch to download a release or make contact,
+created within two days of disclosure). Read the code first, and only run it in a throwaway VM.
+
+## Alerts
+
+```toml
+[notify]
+min_tier = "act"
+
+[[notify.ntfy]]
+url = "https://ntfy.sh/pick-a-long-random-topic"
+
+[[notify.homeassistant]]
+url = "http://homeassistant.local:8123"
+token_env = "HASS_TOKEN"
+service = "notify.mobile_app_your_phone"
+```
+
+`cvescope notify --test` sends one test message to every channel. `cvescope sync --dry-run`
+prints what it would send without marking anything as sent.
+
+## Scheduling
+
+Linux/macOS (cron, every 3 hours):
+
+```
+0 */3 * * * cd /path/to/cvescope && python3 -m cvescope sync >> ~/.local/share/cvescope/sync.log 2>&1
+```
+
+Windows (Task Scheduler, every 3 hours):
+
+```
+schtasks /Create /SC HOURLY /MO 3 /TN cvescope-sync /TR "python -m cvescope sync" /F
+```
+
+(Set the task's "Start in" folder to the repo, or `pip install .` first.)
+
+## Keep the page private
+
+The page is a list of what's vulnerable in your network. It binds to 127.0.0.1 and rejects
+requests whose Host header isn't the address it serves on (which blocks DNS-rebinding tricks
+from other websites). If you bind it wider, put authentication in front of it.
+
+## Commands
+
+```
+cvescope sync [--only kev,epss,...] [--rebaseline] [--dry-run] [--no-notify]
+cvescope inventory            collect versions and print them
+cvescope match                re-match without fetching
+cvescope report [--tier act|watch|info] [--keyword] [-l]
+cvescope show CVE-2024-3400   everything known about one CVE (JSON)
+cvescope events [--days 7] [--all]
+cvescope status               feed health
+cvescope serve [--port 8096]
+cvescope notify [--test] [--dry-run]
+cvescope pin host[:port]      certificate SHA-256 for pin_sha256
+cvescope init [path]          starter config
+```
+
+## Limits
+
+- Distro and appliance packages backport fixes. For those, "check" means look at the distro's
+  own tracker, not that you're vulnerable.
+- Records with no version data and no versions in the text stay "check" until the CNA or
+  CISA adds data.
+- Keyword matches are hints, not findings.
+- EPSS and KEV describe the internet at large, not your network. A KEV entry for something
+  only reachable on your LAN is still worth patching, just maybe not tonight.
+
+## Contributing
+
+Issues and pull requests are welcome. The most useful contributions:
+
+- **Aliases.** If cvescope misses CVEs for something you run, the product name in the CVE
+  records probably differs from what the collector reports. Add it to
+  `cvescope/collectors/packages.py`, or open an issue with the CVE ID and your item.
+- **Collectors.** A collector is a function that takes its config block and returns items
+  (`name`, `vendor`, `product`, `version`, `aliases`). See `cvescope/collectors/appliances.py`
+  and register it in `cvescope/collectors/__init__.py`. Read-only API calls only.
+- **Version parsing.** Odd version formats in CVE records go in `cvescope/versions.py`, with a
+  test in `tests/test_versions.py`.
+
+Run the tests with `python -m unittest discover -s tests`. Found a security problem in
+cvescope itself? See [SECURITY.md](SECURITY.md).
+
+## License
+
+GPL-3.0-or-later. See [LICENSE](LICENSE). The feeds cvescope downloads keep their own terms;
+it fetches them at run time and doesn't redistribute any of their data.
