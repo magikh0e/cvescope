@@ -12,6 +12,9 @@ like when a CVE you've been ignoring suddenly gets a Metasploit module.
 
 It runs on your own machine. Python 3.11+, standard library only, no account, no API keys.
 
+The write-up on my site covers why I built it and how it ranks things:
+**[magikh0e.pl/pubCode/cvescope.html](https://magikh0e.pl/pubCode/cvescope.html)**
+
 ![Your exposure: matched CVEs ranked by exploitation evidence](docs/exposure.png)
 
 <sub>Screenshots use the made-up network in [`examples/demo.toml`](examples/demo.toml).</sub>

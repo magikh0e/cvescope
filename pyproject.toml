@@ -25,6 +25,7 @@ classifiers = [
 
 [project.urls]
 Homepage = "https://github.com/magikh0e/cvescope"
+Documentation = "https://magikh0e.pl/pubCode/cvescope.html"
 Issues = "https://github.com/magikh0e/cvescope/issues"
 
 [project.scripts]
