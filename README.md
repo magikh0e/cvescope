@@ -247,19 +247,27 @@ prints what it would send without marking anything as sent.
 
 ## Scheduling
 
+`--log FILE` appends everything a run prints to a file (rotated at 5 MB), which is what you want
+when nothing is watching the console.
+
 Linux/macOS (cron, every 3 hours):
 
 ```
-0 */3 * * * cd /path/to/cvescope && python3 -m cvescope sync >> ~/.local/share/cvescope/sync.log 2>&1
+0 */3 * * * cvescope --log ~/.local/share/cvescope/sync.log sync
 ```
 
-Windows (Task Scheduler, every 3 hours):
+Windows (Task Scheduler, every 3 hours, no console window, catches up after sleep). In PowerShell,
+after `pip install .`:
 
-```
-schtasks /Create /SC HOURLY /MO 3 /TN cvescope-sync /TR "python -m cvescope sync" /F
+```powershell
+$py = (Get-Command pythonw).Source
+$a  = New-ScheduledTaskAction -Execute $py -Argument "-m cvescope --log `"$env:LOCALAPPDATA\cvescope\sync.log`" sync"
+$t  = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(5) -RepetitionInterval (New-TimeSpan -Hours 3)
+$s  = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew
+Register-ScheduledTask -TaskName cvescope-sync -Action $a -Trigger $t -Settings $s
 ```
 
-(Set the task's "Start in" folder to the repo, or `pip install .` first.)
+If you run from a checkout instead, add `-WorkingDirectory <repo>` to the action.
 
 ## Keep the page private
 

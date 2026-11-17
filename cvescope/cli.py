@@ -154,6 +154,7 @@ def cmd_init(cfg, a):
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="cvescope", description=__doc__)
     p.add_argument("--config", "-c", help="path to config.toml")
+    p.add_argument("--log", help="append all output to this file (for cron / Task Scheduler runs)")
     p.add_argument("--version", action="version", version=f"cvescope {__version__}")
     sub = p.add_subparsers(dest="cmd", required=True)
 
@@ -206,10 +207,36 @@ def main(argv=None) -> int:
     s.set_defaults(fn=cmd_init)
 
     a = p.parse_args(argv)
-    cfg = config.load(a.config)
-    if hasattr(sys.stdout, "reconfigure"):
+    log = _open_log(a.log) if a.log else None
+    if log:
+        # background runs (pythonw, cron) have no console: everything goes to the file
+        sys.stdout = sys.stderr = log
+        print(f"\n===== cvescope {__version__} {a.cmd} {db.now()} =====", flush=True)
+    elif hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     try:
+        cfg = config.load(a.config)
         return a.fn(cfg, a)
     except KeyboardInterrupt:
         return 130
+    except Exception:
+        if not log:
+            raise
+        import traceback
+        traceback.print_exc()
+        return 1
+    finally:
+        if log:
+            log.flush()
+
+
+def _open_log(path: str):
+    """Append-mode log file; rotates to <name>.1 once it passes 5 MB."""
+    p = config.expand(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    if p.exists() and p.stat().st_size > 5_000_000:
+        old = p.with_name(p.name + ".1")
+        if old.exists():
+            old.unlink()
+        p.rename(old)
+    return open(p, "a", encoding="utf-8", errors="replace", buffering=1)
