@@ -19,9 +19,10 @@ def cmd_sync(cfg, a):
     from . import sources
     con = _con(cfg)
     only = a.only.split(",") if a.only else None
-    sources.run(con, cfg, only=only, rebaseline=a.rebaseline, verbose=a.verbose)
+    # inventory first: the distro source fetches only the releases your hosts run
     if not a.no_inventory and not only:
         cmd_inventory(cfg, a, con=con, quiet=True)
+    sources.run(con, cfg, only=only, rebaseline=a.rebaseline, verbose=a.verbose)
     if not only or "match" in (only or []):
         from . import match
         print("[match]")
@@ -157,7 +158,7 @@ def main(argv=None) -> int:
     sub = p.add_subparsers(dest="cmd", required=True)
 
     s = sub.add_parser("sync", help="pull every feed, refresh inventory, match, notify")
-    s.add_argument("--only", help="comma list: cvelist,kev,epss,metasploit,nuclei,exploitdb,github_poc,local_archive")
+    s.add_argument("--only", help="comma list: cvelist,kev,epss,metasploit,nuclei,exploitdb,github_poc,local_archive,distro")
     s.add_argument("--rebaseline", action="store_true", help="re-download the full CVE List")
     s.add_argument("--no-inventory", action="store_true")
     s.add_argument("--no-notify", action="store_true")

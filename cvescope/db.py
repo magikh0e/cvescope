@@ -37,6 +37,12 @@ CREATE INDEX IF NOT EXISTS ix_signal_src ON signal(source, first_seen);
 CREATE TABLE IF NOT EXISTS epss(
   cve_id TEXT PRIMARY KEY, score REAL, pct REAL, prev_pct REAL, date TEXT) WITHOUT ROWID;
 
+-- distro security trackers: per release + source package, is the CVE fixed and in which version
+-- release looks like "debian:12" or "ubuntu:noble"; status is fixed | open | maybe | minor
+CREATE TABLE IF NOT EXISTS distro_fix(
+  release TEXT, package TEXT, cve_id TEXT, status TEXT, fixed TEXT,
+  PRIMARY KEY(release, package, cve_id)) WITHOUT ROWID;
+
 CREATE TABLE IF NOT EXISTS item(
   id TEXT PRIMARY KEY, name TEXT, vendor TEXT, product TEXT, version TEXT,
   collector TEXT, aliases TEXT, keywords TEXT, extra TEXT, seen TEXT, error TEXT);

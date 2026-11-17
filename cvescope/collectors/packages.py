@@ -130,6 +130,40 @@ NMAP: dict[str, tuple[str, list[str]]] = {
 }
 
 
+# binary package -> source package, for dpkg lists that don't include ${source:Package}
+SOURCE_OF = {
+    "openssh-server": "openssh", "openssh-client": "openssh", "openssh-sftp-server": "openssh",
+    "libssl3": "openssl", "libssl3t64": "openssl", "libssl1.1": "openssl", "libc6": "glibc",
+    "libc-bin": "glibc", "libcurl4": "curl", "libcurl4t64": "curl", "nginx-core": "nginx",
+    "nginx-full": "nginx", "zlib1g": "zlib", "libexpat1": "expat", "libsqlite3-0": "sqlite3",
+    "liblzma5": "xz-utils", "polkitd": "policykit-1", "dnsmasq-base": "dnsmasq",
+    "exim4-daemon-light": "exim4", "libapache2-mod-security2": "modsecurity-apache",
+    "wireguard-tools": "wireguard", "containerd.io": "containerd", "docker-ce": "docker-ce",
+}
+
+
+def distro_release(osr: dict) -> str | None:
+    """/etc/os-release (or osquery os_version) -> "debian:12" / "ubuntu:noble"."""
+    osr = {k.upper(): str(v).strip().strip('"') for k, v in osr.items()}
+    ids = {osr.get("ID", "").lower()} | set(osr.get("ID_LIKE", "").lower().split())
+    if osr.get("UBUNTU_CODENAME") or "ubuntu" in ids:
+        code = osr.get("UBUNTU_CODENAME") or osr.get("VERSION_CODENAME")
+        return f"ubuntu:{code.lower()}" if code else None
+    if "debian" in ids or osr.get("ID", "").lower() in ("raspbian",):
+        ver = (osr.get("VERSION_ID") or "").split(".")[0]
+        return f"debian:{ver}" if ver.isdigit() else None
+    return None
+
+
+def parse_os_release(text: str) -> dict:
+    out = {}
+    for line in text.splitlines():
+        k, sep, v = line.partition("=")
+        if sep and k.strip().isupper():
+            out[k.strip()] = v.strip().strip('"')
+    return out
+
+
 def pkg_version(v: str) -> str:
     """Upstream part of a distro version: '1:9.6p1-3ubuntu13.5' -> '9.6p1', '3.0.18,1' -> '3.0.18'."""
     v = v.strip()

@@ -98,11 +98,16 @@ def parse(rec: dict) -> dict | None:
                   for x in (a.get("versions") or [])
                   if str(x.get("versionType") or "").lower() != "git"][:200]
             cpes = [c for c in (a.get("cpes") or []) if isinstance(c, str)][:20]
-            affected.append({"src": tag, "v": vendor, "p": product, "ds": a.get("defaultStatus"),
-                             "vs": vs, "cpes": cpes})
+            pkg = a.get("packageName") or ""
+            entry = {"src": tag, "v": vendor, "p": product, "ds": a.get("defaultStatus"), "vs": vs, "cpes": cpes}
+            if pkg and pkg != product:
+                entry["pkg"] = pkg  # e.g. the WordPress plugin slug next to its display name
+            affected.append(entry)
             nv, np_ = db.norm(vendor), db.norm(product)
             if np_:
                 products.add((nv, np_))
+            if pkg and db.norm(pkg) != np_:
+                products.add((nv, db.norm(pkg)))
             for c in cpes:
                 vp = _cpe_vp(c)
                 if vp and db.norm(vp[1]) and vp[1] != "*":

@@ -77,6 +77,62 @@ _TXT = [
 ]
 
 
+# ---- Debian/Ubuntu package versions (dpkg's own ordering) ---------------
+
+def _dorder(c: str) -> int:
+    if not c or c.isdigit():
+        return 0
+    if c.isalpha():
+        return ord(c)
+    if c == "~":
+        return -1
+    return ord(c) + 256
+
+
+def _verrevcmp(a: str, b: str) -> int:
+    i = j = 0
+    while i < len(a) or j < len(b):
+        first = 0
+        while (i < len(a) and not a[i].isdigit()) or (j < len(b) and not b[j].isdigit()):
+            ac = _dorder(a[i]) if i < len(a) else 0
+            bc = _dorder(b[j]) if j < len(b) else 0
+            if ac != bc:
+                return ac - bc
+            i += 1
+            j += 1
+        while i < len(a) and a[i] == "0":
+            i += 1
+        while j < len(b) and b[j] == "0":
+            j += 1
+        while i < len(a) and a[i].isdigit() and j < len(b) and b[j].isdigit():
+            if not first:
+                first = ord(a[i]) - ord(b[j])
+            i += 1
+            j += 1
+        if i < len(a) and a[i].isdigit():
+            return 1
+        if j < len(b) and b[j].isdigit():
+            return -1
+        if first:
+            return first
+    return 0
+
+
+def dpkg_cmp(a: str, b: str) -> int:
+    """Compare two Debian package versions ([epoch:]upstream[-revision]) like dpkg does."""
+    def split(v):
+        v = v.strip()
+        epoch, _, rest = v.partition(":") if ":" in v else ("0", "", v)
+        up, _, rev = rest.rpartition("-") if "-" in rest else (rest, "", "")
+        return int(epoch or 0), up, rev
+    ea, ua, ra = split(a)
+    eb, ub, rb = split(b)
+    if ea != eb:
+        return -1 if ea < eb else 1
+    c = _verrevcmp(ua, ub) or _verrevcmp(ra, rb)
+    return (c > 0) - (c < 0)
+
+
 _OP = re.compile(r"(<=|=<|>=|<|>|\bbefore\b|\bprior to\b|\bthrough\b|\bup to\b|\bearlier than\b|\bbelow\b)")
 
 

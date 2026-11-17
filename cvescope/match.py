@@ -10,12 +10,13 @@ Statuses:
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 import re
 
 from . import db
 from .sources.cvelist import _cpe_vp
-from .versions import clean, cmp, desc_max, eval_entry, name_pattern
+from .versions import clean, cmp, desc_max, dpkg_cmp, eval_entry, name_pattern
 
 
 def _alias(a: str) -> tuple[str, str, bool]:
@@ -35,9 +36,11 @@ def _prod_ok(alias, product: str) -> bool:
 
 
 def _entry_matches(entry: dict, aliases) -> bool:
-    v, p = db.norm(entry.get("v")), db.norm(entry.get("p"))
+    v, p, pkg = db.norm(entry.get("v")), db.norm(entry.get("p")), db.norm(entry.get("pkg"))
     for al in aliases:
         if p and _prod_ok(al, p) and _vendor_ok(al[0], v):
+            return True
+        if pkg and _prod_ok(al, pkg) and _vendor_ok(al[0], v):
             return True
         for c in entry.get("cpes") or []:
             vp = _cpe_vp(c)
@@ -109,6 +112,63 @@ def evaluate(item: dict, cve_row) -> tuple[str, str, str]:
                              next((r for s, r in results if s == "unknown"), "undecided"))
 
 
+_RECENT_DAYS = 14  # a distro may not have triaged a CVE this new yet
+
+
+def _distro_label(release: str) -> str:
+    fam, _, ver = release.partition(":")
+    return f"{fam.capitalize()} {ver}"
+
+
+def _apply_distro(con, it: dict, rows: dict) -> None:
+    """Let the distro's own tracker decide for distro packages.
+
+    The tracker knows about backported fixes, so its answer replaces the upstream-range guess.
+    CVEs it lists for the package are added even if the upstream record didn't name it.
+    Upstream matches it doesn't list for this release are treated as not affecting the
+    package, unless they're new enough that the distro may not have looked yet.
+    """
+    ex = it.get("extra") or {}
+    release, pkg, pv = ex.get("distro"), ex.get("source") or ex.get("package"), ex.get("package_version")
+    if not (release and pkg and pv):
+        return
+    if not con.execute("SELECT 1 FROM distro_fix WHERE release=? LIMIT 1", (release,)).fetchone():
+        return  # no tracker data for this release yet
+    label = _distro_label(release)
+    listed = {r[0]: (r[1], r[2]) for r in con.execute(
+        "SELECT cve_id, status, fixed FROM distro_fix WHERE release=? AND package=?", (release, pkg))}
+    known = set()
+    ids = list(listed)
+    for i in range(0, len(ids), 500):
+        chunk = ids[i:i + 500]
+        known.update(r[0] for r in con.execute(
+            f"SELECT id FROM cve WHERE state='PUBLISHED' AND id IN ({','.join('?' * len(chunk))})", chunk))
+    for cve, (status, fixed) in listed.items():
+        if cve not in known:
+            continue
+        if status == "fixed":
+            if dpkg_cmp(pv, fixed) >= 0:
+                rows[(cve, it["id"])] = ("not_affected", "distro", f"{label} fixed it in {fixed}")
+            else:
+                pro = " (Ubuntu Pro/ESM)" if "esm" in fixed else ""
+                rows[(cve, it["id"])] = ("affected", "distro", f"{label} fix {fixed}{pro} is newer than {pv}")
+        elif status == "open":
+            rows[(cve, it["id"])] = ("affected", "distro", f"{label} has no fix released yet")
+        elif status == "minor":
+            rows[(cve, it["id"])] = ("not_affected", "distro", f"{label} rates it unimportant (not patched by design)")
+        else:
+            rows[(cve, it["id"])] = ("check", "distro", f"{label} hasn't decided (may need fixing)")
+    cutoff = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=_RECENT_DAYS)).strftime("%Y-%m-%d")
+    stale = [cid for (cid, iid), v in rows.items() if iid == it["id"] and cid not in listed and v[0] == "check"]
+    for i in range(0, len(stale), 500):
+        chunk = stale[i:i + 500]
+        for cid, pub in con.execute(
+                f"SELECT id, published FROM cve WHERE id IN ({','.join('?' * len(chunk))})", chunk):
+            if (pub or "")[:10] < cutoff:
+                rows[(cid, it["id"])] = ("not_affected", "distro",
+                                         f"{label} doesn't list it for {pkg} (not affected or not shipped)")
+
+
 def run(con, cfg) -> str:
     items = []
     for r in con.execute("SELECT * FROM item"):
@@ -135,6 +195,7 @@ def run(con, cfg) -> str:
             for row in con.execute(q, chunk):
                 status, how, reason = evaluate(it, row)
                 new_rows[(row["id"], it["id"])] = (status, how, reason)
+        _apply_distro(con, it, new_rows)
 
     # keyword pass: only CVEs whose record names no product at all (mostly pre-2023 "n/a")
     kw_items = [(it, re.compile(r"\b(?:" + "|".join(re.escape(k) for k in it["keywords"]) + r")\b", re.I))

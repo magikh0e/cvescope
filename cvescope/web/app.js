@@ -55,10 +55,12 @@ async function loadSummary() {
       c.act ? h("span", { class: "badge act", title: "act now", text: c.act }) : null,
       c.watch ? h("span", { class: "badge watch", title: "watch", text: c.watch }) : null,
       !c.act && !c.watch ? h("span", { class: "badge ok", title: `${it.ruled_out} CVEs ruled out by version`, text: "✓" }) : null);
-    const li = h("li", { "data-id": it.id, title: it.error ? it.error : `${it.ruled_out} CVEs ruled out by version`, onclick: () => selectItem(it.id) },
+    const hint = it.extra && (it.extra.hint || it.extra.note);
+    const li = h("li", { "data-id": it.id, title: it.error || hint || `${it.ruled_out} CVEs ruled out by version`, onclick: () => selectItem(it.id) },
       h("span", { class: "name", text: it.name }), badges,
       h("span", { class: "ver", text: it.version || "version unknown" }),
-      it.error ? h("span", { class: "err", text: "collector failed: last known version" }) : null);
+      it.error ? h("span", { class: "err", text: "collector failed: last known version" }) : null,
+      !it.error && hint ? h("span", { class: "hint", text: hint }) : null);
     if (state.item === it.id) li.classList.add("on");
     ul.append(li);
   }

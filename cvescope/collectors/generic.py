@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 import subprocess
 
-from .. import net
+from .. import db, net
 from . import item, packages, secret
 
 
@@ -47,29 +47,48 @@ def command(e: dict) -> list[dict]:
 
 
 def dpkg(e: dict) -> list[dict]:
-    """Installed packages from a Debian/Ubuntu host, filtered to ones we know how to match.
+    """Installed packages from a Debian/Ubuntu host.
 
-    command = ["ssh", "web1", "dpkg-query -W -f='${Package} ${Version}\\n'"]
-    Distro packages carry backported fixes, so an upstream version inside an affected
-    range is shown as "check" (see the distro's tracker) rather than "affected".
+    Recommended command (os-release first, then one package per line with its source package):
+      command = ["ssh", "web1", "cat /etc/os-release; echo ---; dpkg-query -W -f='${Package} ${Version} ${source:Package}\\n'"]
+
+    With the os-release part, each package carries its release ("ubuntu:noble", "debian:12") and
+    the distro's own security tracker decides fixed/affected, backports included. Without it,
+    in-range hits stay "check".
+    packages = "all" adds every source package; by default only the ones in packages.PACKAGES.
     """
     out = _run(e["command"], e.get("timeout", 120))
-    host = e.get("name") or e.get("host") or "host"
-    want = set(e.get("packages") or packages.PACKAGES)
+    return dpkg_items(out, e.get("name") or e.get("host") or "host", e.get("packages"))
+
+
+def dpkg_items(out: str, host: str, wanted=None, release: str | None = None) -> list[dict]:
+    osr_text, sep, pkgs = out.partition("\n---\n") if "\n---\n" in out else ("", "", out)
+    if not sep and out.startswith("---\n"):
+        pkgs = out[4:]
+    release = release or (packages.distro_release(packages.parse_os_release(osr_text)) if osr_text else None)
+    everything = wanted == "all"
+    want = None if everything else set(wanted or packages.PACKAGES)
     items, done = [], set()
-    for line in out.splitlines():
+    for line in pkgs.splitlines():
         parts = line.strip().split()
-        if len(parts) < 2 or parts[0] not in want or parts[0] not in packages.PACKAGES:
+        if len(parts) < 2 or not parts[1][:1].isdigit():
             continue
-        disp, al = packages.PACKAGES[parts[0]]
-        if disp in done:
+        name, ver = parts[0], parts[1]
+        src = (parts[2] if len(parts) > 2 else packages.SOURCE_OF.get(name, name)).split(":")[0]
+        known = packages.PACKAGES.get(name)
+        if not everything and (name not in want or not known):
             continue
-        done.add(disp)
-        items.append(item(f"{disp} ({host})", version=packages.pkg_version(parts[1]), aliases=al,
-                          backports=True, package=parts[0], package_version=parts[1]))
+        disp, al = known if known else (src, [f"*:{db.norm(src)}"])
+        key = known[0] if known else src
+        if key in done:
+            continue
+        done.add(key)
+        items.append(item(f"{disp} ({host})", version=packages.pkg_version(ver), aliases=al,
+                          backports=True, package=name, package_version=ver, source=src, distro=release))
     if not items:
         raise RuntimeError("no known packages in the output")
     return items
+
 
 
 def _dig(obj, path: str):

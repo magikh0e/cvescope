@@ -6,7 +6,7 @@ import time
 import traceback
 
 from .. import db
-from . import cvelist, epss, exploits, kev
+from . import cvelist, distro, epss, exploits, kev
 
 SOURCES = {
     "cvelist": cvelist.sync,
@@ -17,6 +17,7 @@ SOURCES = {
     "exploitdb": exploits.exploitdb,
     "github_poc": exploits.github_poc,
     "local_archive": exploits.local_archive,
+    "distro": distro.sync,
 }
 
 

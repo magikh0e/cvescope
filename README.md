@@ -65,10 +65,14 @@ Each `[[inventory]]` block in the config is one collector:
 |---|---|---|
 | `static` | a product and version you type in | nothing |
 | `command` | a version pulled from any command's output (works over `ssh`) | the command |
-| `dpkg` | known packages on a Debian/Ubuntu host | `dpkg-query` over ssh |
+| `dpkg` | packages on a Debian/Ubuntu host, checked against the distro's own tracker | `dpkg-query` over ssh |
 | `http_json` | a version field from any JSON endpoint | URL + dotted path |
 | `nmap_xml` | every open service nmap identified in a `-sV` scan you ran | the XML file(s) |
-| `proxmox` | PVE version, optionally QEMU, LXC, running kernel | API token, PVEAuditor role |
+| `docker` | the app in each running Docker/Podman container, from its image tag or version label | `docker ps` (local or ssh) |
+| `osquery` | installed programs, apps and packages from osquery output or `examples/windows-inventory.ps1` | the JSON file(s) |
+| `wpscan` | WordPress core, theme and plugin versions from a WPScan report | the JSON file(s) |
+| `whatweb` | web stack versions (server, PHP, CMS, JS libraries) from WhatWeb | the JSON file(s) |
+| `proxmox` | PVE version, every VM/container (OS via the guest agent), optionally QEMU, LXC, kernel | API token, PVEAuditor role |
 | `opnsense` | OPNsense, its FreeBSD base and OpenSSL, plus OpenSSH, Unbound, dnsmasq, Suricata and other packages | API key/secret |
 | `unifi` | UniFi Network version and every adopted device's firmware | Control Plane API key |
 | `pihole` | Pi-hole v6 core, FTL and web versions | app password |
@@ -83,6 +87,49 @@ credential is sent. Without a pin or `verify_tls = true`, cvescope refuses to co
 
 If a collector fails (device offline, token expired), its last known versions are kept and
 the page marks it, so one outage doesn't make your matches vanish.
+
+### Debian and Ubuntu packages
+
+Distros backport fixes, so `openssh 1:9.6p1-3ubuntu13.5` can be patched against a CVE whose
+upstream range says 9.6p1 is affected. For Debian and Ubuntu hosts cvescope asks the distro
+instead: the Debian security tracker (via its OSV export) and Canonical's per-release OVAL
+data list, per source package, which CVEs were fixed and in which build. Give the `dpkg`
+collector the host's os-release along with the package list and every package gets a real
+answer:
+
+```toml
+[[inventory]]
+type = "dpkg"
+name = "web1"
+command = ["ssh", "web1", "cat /etc/os-release; echo ---; dpkg-query -W -f='${Package} ${Version} ${source:Package}\\n'"]
+# packages = "all"   # every source package, not just the ~60 cvescope has names for
+```
+
+Only the releases your inventory runs are downloaded (Debian ~80 MB once, then only when it
+changes; Ubuntu ~2 MB per release). A CVE the tracker doesn't list for the package counts as
+not affecting it, unless it's under two weeks old and may not have been triaged yet. The same
+applies to `osquery` `deb_packages` results and to Debian/Ubuntu VMs found through Proxmox.
+
+### Containers, endpoints and websites
+
+- **`docker`** runs `docker ps` (or `podman ps`) locally or through `command_prefix = ["ssh", "host"]`
+  and names the app in each container from its image. A floating tag like `latest` is resolved
+  through the image's version label; if there isn't one, the container is listed but not matched.
+  This covers the app, not the OS packages inside the image (use an SBOM tool for those).
+- **`osquery`** reads `osqueryi --json` output, osqueryd result logs, or the JSON written by
+  [`examples/windows-inventory.ps1`](examples/windows-inventory.ps1). That script records the
+  exact Windows build including the update revision, so Microsoft's CVE ranges match precisely,
+  plus every installed program. About 50 common programs are mapped by name (browsers, archivers,
+  remote-access and VPN clients, dev tools); `programs = "all"` adds the rest by name.
+- **`wpscan`** and **`whatweb`** read reports from those scanners. Run them only against sites
+  you're allowed to test.
+
+### Proxmox guests
+
+The `proxmox` collector lists every VM and container (`guests = false` turns it off). VMs with
+the QEMU guest agent report their OS and kernel, so a forgotten Debian VM shows up with its
+version and goes through the Debian tracker. Containers only report their OS type; they're
+listed with a hint to add a `dpkg` collector for them.
 
 ### Finding gear you forgot about
 
@@ -150,6 +197,8 @@ live in `cvescope/collectors/packages.py`; add your own per item with `aliases =
 | [Exploit-DB](https://gitlab.com/exploit-database/exploitdb) index | published exploit code | ~10 MB |
 | [PoC-in-GitHub](https://github.com/nomi-sec/PoC-in-GitHub) | GitHub repos claiming a PoC | ~85 MB shallow clone, needs git |
 | your own folders | any file that mentions a CVE ID | local scan, only new files after the first run |
+| [Debian security tracker](https://security-tracker.debian.org/) (OSV export) | fixed package version per Debian release | ~80 MB, only if you run Debian |
+| [Ubuntu OVAL](https://security-metadata.canonical.com/oval/) | fixed package version per Ubuntu release | ~2 MB per release you run |
 
 The NVD is not used. Its analysis backlog means it often lags the CVE List itself.
 

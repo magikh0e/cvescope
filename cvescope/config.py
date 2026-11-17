@@ -24,6 +24,8 @@ DEFAULTS = {
         "exploitdb": True,
         "github_poc": True,
         "local_archive": [],
+        "distro": True,
+        "distro_releases": [],
     },
     "notify": {
         "min_tier": "act",

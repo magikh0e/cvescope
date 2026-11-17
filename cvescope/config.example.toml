@@ -20,6 +20,8 @@ metasploit = true       # Metasploit module metadata (~11 MB)
 nuclei = true           # Nuclei CVE templates index
 exploitdb = true        # Exploit-DB index
 github_poc = true       # nomi-sec/PoC-in-GitHub, shallow git clone (~85 MB, needs git)
+distro = true           # Debian/Ubuntu trackers, only for releases your inventory runs
+# distro_releases = ["debian:12", "ubuntu:noble"]   # fetch these even if no host reports them
 
 # Your own exploit/advisory folders: any file that mentions a CVE gets linked to it.
 # [[sources.local_archive]]
@@ -70,12 +72,35 @@ version = "30.0.4"
 # regex = 'OpenSSH_([0-9.p]+)'
 # package = "openssh-server"
 
-# Known packages from a Debian/Ubuntu box. Distro fixes get backported, so in-range
-# hits show as "check" instead of "affected".
+# Packages from a Debian/Ubuntu box. With the os-release part, the distro's own tracker
+# decides fixed/affected (backports included); without it, in-range hits stay "check".
 # [[inventory]]
 # type = "dpkg"
 # name = "web1"
-# command = ["ssh", "web1", "dpkg-query -W -f='${Package} ${Version}\\n'"]
+# command = ["ssh", "web1", "cat /etc/os-release; echo ---; dpkg-query -W -f='${Package} ${Version} ${source:Package}\\n'"]
+# packages = "all"                  # default: only the ~60 packages cvescope has names for
+
+# Apps in running containers (docker ps / podman ps), local or over ssh
+# [[inventory]]
+# type = "docker"
+# name = "vps"
+# command_prefix = ["ssh", "vps"]
+# engine = "docker"                 # or "podman"
+
+# Installed software: osquery JSON output, osqueryd result logs, or the JSON from
+# examples/windows-inventory.ps1 (exact Windows build + installed programs)
+# [[inventory]]
+# type = "osquery"
+# path = "~/inventory/*.json"
+# programs = "known"                # "all" adds programs without a built-in name mapping
+
+# Web stacks from scanner reports you ran (only against sites you may test)
+# [[inventory]]
+# type = "wpscan"
+# path = "~/scans/wpscan/*.json"
+# [[inventory]]
+# type = "whatweb"
+# path = "~/scans/whatweb/*.json"
 
 # Any JSON endpoint that reports a version
 # [[inventory]]
@@ -104,6 +129,7 @@ version = "30.0.4"
 # token_file = "~/.secrets/pve-token"     # user@pve!tokenid=secret
 # pin_sha256 = "AB:CD:..."
 # packages = true                          # also QEMU, LXC, running kernel
+# guests = true                            # every VM/CT; VM OS + kernel via the guest agent
 
 # OPNsense (API key + secret of a user with read access to firmware/diagnostics)
 # [[inventory]]

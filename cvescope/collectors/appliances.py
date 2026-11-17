@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 import json
 
-from .. import net
+from .. import db, net
 from ..config import expand
 from . import item, packages, secret
 
@@ -42,6 +42,8 @@ def proxmox(e: dict) -> list[dict]:
                 aliases=["proxmox:proxmox virtual environment", "proxmox:proxmox ve", "proxmox:pve manager",
                          "proxmox:pve*", "proxmox:proxmox ve*"],
                 keywords=["Proxmox VE", "Proxmox Virtual Environment"], host=c.host)]
+    if e.get("guests", True):
+        out += _pve_guests(c, h)
     if e.get("packages") and nodes:
         apt = c.get(f"/api2/json/nodes/{nodes[0]}/apt/versions", h)["data"]
         for p in apt:
@@ -54,6 +56,69 @@ def proxmox(e: dict) -> list[dict]:
                 disp, al = PVE_PACKAGES[name]
                 out.append(item(f"{disp} ({nodes[0]})", version=packages.pkg_version(p["Version"]),
                                 aliases=al, backports=True, package=name))
+    return out
+
+
+def _guest_os(info: dict, label: str) -> list[dict]:
+    """QEMU guest agent get-osinfo -> OS item (+ kernel item for Linux guests)."""
+    gid = (info.get("id") or "").lower()
+    ver = info.get("version-id") or info.get("version") or ""
+    pretty = info.get("pretty-name") or info.get("name") or gid
+    kr = info.get("kernel-release") or ""
+    out = []
+    if gid == "freebsd":
+        out.append(item(f"{pretty} ({label})", "freebsd", "freebsd", kr or ver, backports=True))
+    elif gid == "haos":
+        out.append(item(f"Home Assistant OS ({label})", "home assistant", "operating system", ver,
+                        aliases=["home assistant:home assistant operating system", "home assistant:os"]))
+    elif gid in ("debian", "ubuntu"):
+        code = (info.get("version-codename") or "").lower()
+        release = f"debian:{ver.split('.')[0]}" if gid == "debian" else (f"ubuntu:{code}" if code else None)
+        out.append(item(f"{pretty} ({label})", gid, f"{gid} linux", ver, guest_os=True, distro=release))
+    elif gid == "mswindows":
+        name = info.get("name") or "Windows"
+        out.append(item(f"{pretty} ({label})", "microsoft", db.norm(name.replace("Microsoft ", "")),
+                        f"10.0.{kr}" if kr.isdigit() else ver, backports=True,
+                        note="build revision unknown: check Windows Update"))
+    else:
+        out.append(item(f"{pretty} ({label})", version=ver or None, aliases=[f"*:{db.norm(info.get('name') or gid)}"]))
+    if kr and gid not in ("freebsd", "mswindows"):
+        up = kr.split("-")[0].split("+")[0]
+        extra = {"backports": True, "running": kr}
+        if gid == "debian":
+            extra.update(distro=f"debian:{ver.split('.')[0]}", source="linux",
+                         package_version=f"{up}-1")  # agent reports no Debian revision: assume the first
+        elif gid == "ubuntu" and kr.count("-") >= 2:
+            abi = kr.split("-")[1]
+            extra.update(distro=out[0]["extra"].get("distro"), source="linux", package_version=f"{up}-{abi}.{abi}")
+        out.append(item(f"Linux kernel ({label})", "linux", "linux kernel", up, aliases=["linux:linux"], **extra))
+    return out
+
+
+
+def _pve_guests(c, h) -> list[dict]:
+    """Every VM and container. VMs with the guest agent report their OS; containers only a type."""
+    out = []
+    for g in c.get("/api2/json/cluster/resources?type=vm", h).get("data") or []:
+        kind = "VM" if g["type"] == "qemu" else "CT"
+        label = f"{kind} {g['vmid']} {g.get('name') or ''}".strip()
+        base = f"/api2/json/nodes/{g['node']}/{g['type']}/{g['vmid']}"
+        info = None
+        if g["type"] == "qemu" and g.get("status") == "running":
+            try:
+                info = c.get(base + "/agent/get-osinfo", h)["data"]["result"]
+            except Exception:
+                info = None  # no agent, agent not running, or no permission
+        if info:
+            out += _guest_os(info, label)
+            continue
+        try:
+            ostype = c.get(base + "/config", h)["data"].get("ostype") or "unknown"
+        except Exception:
+            ostype = "unknown"
+        out.append(item(f"{ostype} {'container' if kind == 'CT' else 'VM'} ({label})", guest=True,
+                        status=g.get("status"),
+                        hint="no version visible from Proxmox: add a dpkg or osquery collector for it"))
     return out
 
 
