@@ -2,6 +2,13 @@
 
 # cvescope
 
+<p align="center">
+  <a href="https://github.com/magikh0e/cvescope/actions/workflows/test.yml"><img src="https://github.com/magikh0e/cvescope/actions/workflows/test.yml/badge.svg" alt="tests"></a>
+  <a href="https://github.com/magikh0e/cvescope/releases/latest"><img src="https://img.shields.io/github/v/release/magikh0e/cvescope" alt="latest release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/magikh0e/cvescope" alt="license: GPL-3.0"></a>
+  <img src="https://img.shields.io/badge/python-3.11%2B-blue" alt="Python 3.11+">
+</p>
+
 The CVEs that hit the gear you actually run, ranked by whether anyone is exploiting them.
 
 There are 40,000+ new CVEs a year. Almost none of them matter to you. cvescope asks your

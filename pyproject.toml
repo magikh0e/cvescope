@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cvescope"
-version = "0.2.3"
+dynamic = ["version"]
 description = "Track the CVEs that hit the gear you actually run, ranked by real-world exploitation (KEV, EPSS, Metasploit, Nuclei, Exploit-DB, public PoCs)."
 readme = "README.md"
 license = "GPL-3.0-or-later"
@@ -33,6 +33,9 @@ cvescope = "cvescope.cli:main"
 
 [tool.setuptools]
 packages = ["cvescope", "cvescope.sources", "cvescope.collectors"]
+
+[tool.setuptools.dynamic]
+version = {attr = "cvescope.__version__"}
 
 [tool.setuptools.package-data]
 cvescope = ["web/*", "config.example.toml"]
