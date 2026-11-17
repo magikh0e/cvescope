@@ -17,7 +17,8 @@ TIER_RANK = {"act": 0, "watch": 1, "info": 2}
 
 def _pending(con, cfg) -> tuple[list[dict], list[int]]:
     ev = [dict(r) for r in con.execute(
-        "SELECT * FROM event WHERE notified=0 AND baseline=0 AND kind != 'resolved' ORDER BY ts")]
+        "SELECT * FROM event WHERE notified=0 AND baseline=0 AND kind NOT IN ('resolved','ack','unack') "
+        "ORDER BY ts")]
     ids = [e["id"] for e in ev]
     statuses = ("affected", "check", "keyword") if cfg["notify"].get("keyword_matches") else ("affected", "check")
     cves = {e["cve_id"] for e in ev}

@@ -35,7 +35,8 @@ DEFAULTS = {
         "webhook": [],
     },
     # stale_after_hours: warn on the page when the last full sync is older than this
-    "serve": {"host": "127.0.0.1", "port": 8096, "stale_after_hours": 12},
+    # read_only: hide the acknowledge buttons and refuse every write from the page
+    "serve": {"host": "127.0.0.1", "port": 8096, "stale_after_hours": 12, "read_only": False},
     "nvd": {"enabled": False, "max_per_run": 40},
     "inventory": [],
 }

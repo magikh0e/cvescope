@@ -98,6 +98,22 @@ main { padding: 12px 18px 40px; min-width: 0; }
 .pill.affected { color: var(--act); background: var(--act-bg); }
 .pill.check { color: var(--watch); background: var(--watch-bg); }
 .pill.keyword, .pill.not_affected { color: var(--info); background: var(--info-bg); }
+.pill.acked { color: var(--ok); border: 1px solid var(--ok); }
+.row.acked { opacity: .65; }
+.row.acked .bar { background: var(--line); }
+.row .ackwarn { display: block; color: var(--watch); }
+.ack { margin-top: 6px; font-size: 12px; }
+.acknote { color: var(--ok); overflow-wrap: anywhere; }
+.ackbtns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.ackform { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; align-items: center; }
+.ackform input, .ackform select {
+  padding: 4px 8px; border-radius: 5px; border: 1px solid var(--line); background: var(--bg); color: var(--text); font: 12px var(--sans);
+}
+.ackform input { flex: 1 1 220px; min-width: 0; }
+.ackform .err { flex-basis: 100%; }
+.btn { padding: 3px 10px; border-radius: 5px; border: 1px solid var(--line); background: var(--panel2); cursor: pointer; font-size: 12px; }
+.btn:hover { border-color: var(--accent); }
+.btn.primary { border-color: var(--accent); color: var(--accent); }
 .empty { padding: 30px; text-align: center; color: var(--muted); border: 1px dashed var(--line); border-radius: 8px; }
 
 .detail { border-left: 1px solid var(--line); background: var(--panel); padding: 16px 18px 40px; position: sticky; top: 50px; max-height: calc(100vh - 50px); overflow-y: auto; }

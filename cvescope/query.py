@@ -5,7 +5,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 
-from . import db
+from . import acks, db
 
 TIER_LABEL = {"act": "Act now", "watch": "Watch", "info": "Info"}
 TIER_ORDER = {"act": 0, "watch": 1, "info": 2}
@@ -65,7 +65,10 @@ def flag_text(r: dict) -> list[str]:
 
 
 def matches(con, cfg, tiers=("act", "watch", "info"), include_keyword=False, item_id=None,
-            statuses=("affected", "check", "keyword"), limit=None) -> list[dict]:
+            statuses=("affected", "check", "keyword"), limit=None, cve_ids=None,
+            acked="hide") -> list[dict]:
+    """Matched CVEs with tier and reasons. acked: "hide" drops acknowledged matches (lapsed and
+    expired ones stay), "include" keeps them, "only" returns just those."""
     q = ("SELECT m.cve_id, m.item_id, m.status, m.how, m.detail, m.first_seen, i.name AS item_name, "
          "i.version AS item_version, i.extra AS item_extra, c.title, c.description, c.cvss, c.severity, "
          "c.published, c.ssvc_exploitation, c.ssvc_automatable, c.ssvc_impact, e.pct AS epss_pct, "
@@ -78,8 +81,15 @@ def matches(con, cfg, tiers=("act", "watch", "info"), include_keyword=False, ite
     if item_id:
         q += " AND m.item_id = ?"
         args.append(item_id)
+    if cve_ids is not None:
+        cve_ids = list(cve_ids)
+        if not cve_ids:
+            return []
+        q += f" AND m.cve_id IN ({','.join('?' * len(cve_ids))})"
+        args += cve_ids
     rows = [dict(r) for r in con.execute(q, args)]
     sigs = signals_for(con, {r["cve_id"] for r in rows})
+    ack_rows = acks.load(con)
     out = []
     for r in rows:
         s = sigs.get(r["cve_id"], {})
@@ -93,6 +103,14 @@ def matches(con, cfg, tiers=("act", "watch", "info"), include_keyword=False, ite
         if t not in tiers:
             continue
         r["tier"], r["why"] = t, why
+        a = ack_rows.get((r["cve_id"], r["item_id"]))
+        if a:
+            st, reason = acks.state(a, t, r["status"], acks.evidence_keys(s, r["ssvc_exploitation"]))
+            r["ack"] = {"created": a["created"], "until": a["until"], "note": a["note"],
+                        "state": st, "reason": reason}
+        active = bool(a) and r["ack"]["state"] == "active"
+        if (acked == "hide" and active) or (acked == "only" and not active):
+            continue
         r["signals"] = {k: len(v) for k, v in s.items()}
         r["description"] = (r["description"] or "")[:400]
         out.append(r)
@@ -141,6 +159,14 @@ def cve_detail(con, cfg, cid: str) -> dict | None:
     d["matches"] = [dict(m) for m in con.execute(
         "SELECT m.*, i.name AS item_name, i.version AS item_version FROM match m "
         "JOIN item i ON i.id=m.item_id WHERE m.cve_id=?", (cid,))]
+    ack_rows, keys = acks.load(con), acks.evidence_keys(sig, d.get("ssvc_exploitation"))
+    for m in d["matches"]:
+        m["live"] = m["status"] in acks.LIVE
+        a = ack_rows.get((cid, m["item_id"]))
+        if a:
+            st, reason = acks.state(a, d["tier"], m["status"], keys)
+            m["ack"] = {"created": a["created"], "until": a["until"], "note": a["note"],
+                        "state": st, "reason": reason}
     d["events"] = [dict(x) for x in con.execute(
         "SELECT ts, kind, detail FROM event WHERE cve_id=? ORDER BY ts DESC LIMIT 50", (cid,))]
     names = item_names(con)
@@ -152,7 +178,8 @@ def cve_detail(con, cfg, cid: str) -> dict | None:
 _KIND = {"kev": "added to CISA KEV", "msf": "Metasploit module published", "nuclei": "Nuclei template published",
          "edb": "Exploit-DB entry published", "poc": "new GitHub PoC", "local": "added to your archive",
          "epss": "EPSS jumped", "ssvc": "CISA SSVC exploitation raised", "match": "now matches your inventory",
-         "resolved": "no longer affects you", "new_cve": "new CVE"}
+         "resolved": "no longer affects you", "new_cve": "new CVE", "ack": "acknowledged",
+         "unack": "acknowledgement removed"}
 
 
 def item_names(con) -> dict:
@@ -170,6 +197,13 @@ def event_summary(e: dict, names: dict | None = None) -> str:
     elif e["kind"] in ("match", "resolved"):
         item = d.get("item")
         s += f" ({(names or {}).get(item, item)}, {d.get('status')})"
+    elif e["kind"] in ("ack", "unack"):
+        item = d.get("item")
+        s += f" ({(names or {}).get(item, item)})"
+        if d.get("until"):
+            s += f" until {d['until']}"
+        if d.get("note"):
+            s += f": {d['note']}"
     elif e["kind"] == "poc":
         s += f": {d.get('url')}"
     elif e["kind"] in ("msf", "nuclei", "edb"):
@@ -229,7 +263,9 @@ def health(con, cfg, now: dt.datetime | None = None) -> dict:
 
 def summary(con, cfg) -> dict:
     items = [dict(r) for r in con.execute("SELECT id,name,version,collector,error,seen,extra FROM item ORDER BY collector, name")]
-    ms = matches(con, cfg)
+    ms = matches(con, cfg, acked="include")
+    n_acked = sum(1 for m in ms if m.get("ack", {}).get("state") == "active")
+    ms = [m for m in ms if m.get("ack", {}).get("state") != "active"]
     per: dict[str, dict] = {}
     for m in ms:
         p = per.setdefault(m["item_id"], {"act": 0, "watch": 0, "info": 0, "affected": 0})
@@ -242,10 +278,11 @@ def summary(con, cfg) -> dict:
         it["ruled_out"] = nots.get(it["id"], 0)
         it["extra"] = json.loads(it["extra"] or "{}")
     src = [dict(r) for r in con.execute("SELECT name,last_ok,last_try,last_error FROM source ORDER BY name")]
-    totals = {"act": 0, "watch": 0, "info": 0}
+    totals = {"act": 0, "watch": 0, "info": 0, "acked": n_acked}
     for m in ms:
         totals[m["tier"]] += 1
     return {"items": items, "sources": src, "totals": totals, "health": health(con, cfg),
+            "read_only": bool(cfg["serve"].get("read_only")),
             "cves": con.execute("SELECT count(*) FROM cve").fetchone()[0],
             "epss_date": (con.execute("SELECT max(date) FROM epss").fetchone() or [None])[0]}
 

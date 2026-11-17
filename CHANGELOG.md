@@ -6,6 +6,12 @@ releases are on the [releases page](https://github.com/magikh0e/cvescope/release
 ## [Unreleased]
 
 ### Added
+- Acknowledgements: `cvescope ack` / `unack` / `acks`, and an Acknowledge button in the CVE
+  panel. An acknowledged match leaves act now, watch, the counts and alerts, and comes back by
+  itself when an optional end date passes or the evidence gets worse (a higher tier, a new kind
+  of exploitation evidence, or a check that turns out affected). `report --acked` and the
+  page's "show acknowledged" list the hidden ones. The page's only write: JSON only, refused
+  when another site started the request, off with `serve.read_only = true`.
 - Optional NVD lookup (`[nvd] enabled = true`). For "check" matches the CVE List can't settle
   and that are visible in act now or watch, cvescope asks NVD for its CPE version ranges and
   re-matches with them. Off by default, works without an API key (slow: 5 requests per 30 s),

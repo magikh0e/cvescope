@@ -2,7 +2,7 @@
 // cvescope local page. Every string from feeds is untrusted: DOM is built with textContent only.
 
 const $ = (s) => document.querySelector(s);
-const state = { item: null, current: null, items: [] };
+const state = { item: null, current: null, items: [], readOnly: false, acked: 0 };
 const TIER = { act: "Act now", watch: "Watch", info: "Info" };
 const SIG = { kev: "KEV", msf: "Metasploit", nuclei: "Nuclei", edb: "Exploit-DB", poc: "GitHub PoC", local: "archive" };
 
@@ -30,6 +30,12 @@ async function api(path) {
   if (!r.ok) throw new Error(path + " " + r.status);
   return r.json();
 }
+async function post(path, obj) {
+  const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify(obj) });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || path + " " + r.status);
+  return d;
+}
 const pct = (p) => (p == null ? "" : (p * 100).toFixed(p >= 0.995 ? 1 : 0) + "%");
 const day = (s) => (s ? String(s).slice(0, 10) : "");
 const empty = (msg) => h("div", { class: "empty", text: msg });
@@ -38,6 +44,10 @@ const empty = (msg) => h("div", { class: "empty", text: msg });
 async function loadSummary() {
   const s = await api("/api/summary");
   state.items = s.items;
+  state.readOnly = !!s.read_only;
+  state.acked = s.totals.acked || 0;
+  $("#ackCount").textContent = `(${state.acked})`;
+  $("#ackFilter").hidden = !state.acked && !$("#fAcked").checked;
   const t = $("#totals");
   t.replaceChildren(
     h("button", { class: "total act", type: "button", title: "Exploited or point-and-shoot", onclick: () => showTiers(false) }, `${s.totals.act} act now`),
@@ -106,7 +116,9 @@ const sigKeys = (s) => Object.keys(SIG).filter((k) => s && s[k]);  // fixed orde
 
 function matchRow(m) {
   const sig = sigKeys(m.signals);
-  return h("div", { class: `row ${m.tier}`, "data-cve": m.cve_id, onclick: () => openCve(m.cve_id) },
+  const a = m.ack, acked = a && a.state === "active";
+  const why = m.why && m.why.length ? TIER[m.tier] + ": " + m.why.join(" · ") : null;
+  return h("div", { class: `row ${m.tier}${acked ? " acked" : ""}`, "data-cve": m.cve_id, onclick: () => openCve(m.cve_id) },
     h("span", { class: "bar" }),
     h("span", { class: "id", text: m.cve_id }),
     h("span", { class: "title", text: m.title || m.description || "" }),
@@ -115,15 +127,16 @@ function matchRow(m) {
       m.epss_pct != null ? h("span", { title: "EPSS percentile", text: "EPSS " + pct(m.epss_pct) }) : null),
     h("span", { class: "meta" },
       h("span", { class: `pill ${m.status}`, text: m.status }),
+      acked ? h("span", { class: "pill acked", title: ackLine(a), text: "acknowledged" }) : null,
       h("span", { text: `${m.item_name}${m.item_version ? " " + m.item_version : ""}` }),
       ...sig.map((k) => h("span", { class: `chip ${k}`, text: SIG[k] + (m.signals[k] > 1 ? " ×" + m.signals[k] : "") })),
       h("span", { text: "published " + day(m.published) })),
-    m.why && m.why.length ? h("span", { class: "why", text: TIER[m.tier] + ": " + m.why.join(" · ") }) : null);
+    why || (a && !acked) ? h("span", { class: "why" }, why, a && !acked ? h("span", { class: "ackwarn", text: ackLine(a) }) : null) : null);
 }
 
 async function loadMatches() {
   const tiers = $("#fInfo").checked ? "act,watch,info" : "act,watch";
-  const q = new URLSearchParams({ tiers, keyword: $("#fKeyword").checked ? "1" : "0" });
+  const q = new URLSearchParams({ tiers, keyword: $("#fKeyword").checked ? "1" : "0", acked: $("#fAcked").checked ? "1" : "0" });
   if (state.item) q.set("item", state.item);
   const rows = await api("/api/matches?" + q);
   const it = state.items.find((x) => x.id === state.item);
@@ -131,7 +144,8 @@ async function loadMatches() {
   const list = $("#matchList");
   if (!rows.length) {
     list.replaceChildren(empty(it ? `Nothing ${$("#fInfo").checked ? "" : "exploited or likely "}matches ${it.name} ${it.version || ""}. ${it.ruled_out} CVEs were ruled out by version.`
-      : "No exploited or likely CVEs match your inventory right now. Tick “include info” to see the rest."));
+      : "No exploited or likely CVEs match your inventory right now. Tick “include info” to see the rest."
+        + (state.acked && !$("#fAcked").checked ? ` ${state.acked} acknowledged ${state.acked === 1 ? "one is" : "ones are"} hidden.` : "")));
     return;
   }
   list.replaceChildren(...rows.map(matchRow));
@@ -144,7 +158,7 @@ function kv(pairs) {
   return dl;
 }
 
-async function openCve(id) {
+async function openCve(id, keepScroll) {
   state.current = id;
   for (const r of document.querySelectorAll(".row")) r.classList.toggle("on", r.dataset.cve === id);
   history.replaceState(null, "", "#" + id);
@@ -164,7 +178,8 @@ async function openCve(id) {
   ];
   if (d.matches.length) {
     parts.push(h("h3", { text: "Your inventory" }), h("ul", { class: "ev" }, d.matches.map((m) =>
-      h("li", {}, h("span", { class: `pill ${m.status}`, text: m.status }), " ", `${m.item_name} ${m.item_version || ""}`, h("div", { class: "muted", text: m.detail })))));
+      h("li", {}, h("span", { class: `pill ${m.status}`, text: m.status }), " ", `${m.item_name} ${m.item_version || ""}`, h("div", { class: "muted", text: m.detail }),
+        m.live || m.ack ? ackBlock(d.id, m) : null))));
   }
   if (s.kev) {
     const k = s.kev[0];
@@ -197,9 +212,57 @@ async function openCve(id) {
     h("li", {}, link(`https://nvd.nist.gov/vuln/detail/${d.id}`, "NVD")),
     ...(d.refs || []).map((u) => h("li", {}, link(u)))));
   body.replaceChildren(...parts.filter(Boolean));
+  const top = $("#detail").scrollTop;
   $("#detail").hidden = false;
   document.querySelector(".layout").classList.add("with-detail");
-  $("#detail").scrollTop = 0;
+  $("#detail").scrollTop = keepScroll ? top : 0;
+}
+
+// ---------- acknowledgements ----------
+function ackLine(a) {
+  const when = `Acknowledged ${day(a.created)}`;
+  if (a.state === "active") return `${when}${a.until ? ", until " + a.until : ""}${a.note ? ": " + a.note : ""}`;
+  if (a.state === "expired") return `${when}, ${a.reason}, so it's back`;
+  return `${when}, back because: ${a.reason}`;
+}
+
+async function afterAck(cve) {
+  await loadSummary();
+  await loadMatches();
+  await openCve(cve, true);
+}
+
+function ackBlock(cve, m) {
+  const box = h("div", { class: "ack" });
+  const a = m.ack;
+  const fail = (e) => box.append(h("div", { class: "err", text: e.message }));
+  const undo = () => post("/api/unack", { cve, item: m.item_id }).then(() => afterAck(cve), fail);
+  const form = () => {
+    const note = h("input", { type: "text", maxlength: "500", "aria-label": "Note",
+      placeholder: "What did you do? e.g. applied the opt-in fix, blocked at the firewall" });
+    const days = h("select", { "aria-label": "How long" }, ...[["", "no end date"], ["7", "for 7 days"], ["30", "for 30 days"],
+      ["90", "for 90 days"], ["365", "for a year"]].map(([v, t]) => h("option", { value: v, text: t })));
+    const err = h("div", { class: "err" });
+    const submit = (e) => {
+      e.preventDefault();
+      post("/api/ack", { cve, item: m.item_id, note: note.value, days: days.value ? Number(days.value) : null })
+        .then(() => afterAck(cve), (x) => { err.textContent = x.message; });
+    };
+    box.replaceChildren(
+      h("div", { class: "muted", text: "Hides it from act now, watch, the counts and alerts. It comes back if it gets worse: a higher tier, a new kind of exploit evidence, or a check that turns out affected." }),
+      h("form", { class: "ackform", onsubmit: submit }, note, days,
+        h("button", { type: "submit", class: "btn primary", text: "Acknowledge" }),
+        h("button", { type: "button", class: "btn", onclick: show, text: "Cancel" }), err));
+    note.focus();
+  };
+  function show() {
+    const btns = state.readOnly ? null : h("div", { class: "ackbtns" },
+      !a || a.state !== "active" ? h("button", { type: "button", class: "btn", onclick: form, text: a ? "Acknowledge again" : "Acknowledge" }) : null,
+      a ? h("button", { type: "button", class: "btn", onclick: undo, text: "Remove acknowledgement" }) : null);
+    box.replaceChildren(...[a ? h("div", { class: a.state === "active" ? "acknote" : "warn", text: ackLine(a) }) : null, btns].filter(Boolean));
+  }
+  show();
+  return box;
 }
 
 function closeDetail() {
@@ -263,11 +326,12 @@ function tab(name) {
 for (const b of document.querySelectorAll(".tabs button")) b.addEventListener("click", () => tab(b.dataset.tab));
 $("#fInfo").addEventListener("change", loadMatches);
 $("#fKeyword").addEventListener("change", loadMatches);
+$("#fAcked").addEventListener("change", loadMatches);
 $("#days").addEventListener("change", loadEvents);
 $("#fAllEvents").addEventListener("change", loadEvents);
 $("#allItems").addEventListener("click", () => { state.item = null; selectItem(null); });
 $("#closeDetail").addEventListener("click", closeDetail);
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDetail(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !e.target.closest(".ackform")) closeDetail(); });
 $("#searchForm").addEventListener("submit", (e) => { e.preventDefault(); const q = $("#q").value.trim(); if (q.length >= 3) doSearch(q); });
 
 (async () => {

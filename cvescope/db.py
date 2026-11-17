@@ -56,6 +56,11 @@ CREATE TABLE IF NOT EXISTS match(
   PRIMARY KEY(cve_id, item_id)) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS ix_match_item ON match(item_id);
 
+-- "I've dealt with this one": hides a match until it expires or the evidence gets worse (acks.py)
+CREATE TABLE IF NOT EXISTS ack(
+  cve_id TEXT, item_id TEXT, created TEXT, until TEXT, note TEXT, evidence TEXT,
+  PRIMARY KEY(cve_id, item_id)) WITHOUT ROWID;
+
 CREATE TABLE IF NOT EXISTS event(
   id INTEGER PRIMARY KEY, ts TEXT, cve_id TEXT, kind TEXT, detail TEXT,
   baseline INTEGER DEFAULT 0, notified INTEGER DEFAULT 0);

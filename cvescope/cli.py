@@ -78,7 +78,8 @@ def cmd_report(cfg, a):
     con = _con(cfg)
     tiers = ["act", "watch", "info"]
     want = tiers[: tiers.index(a.tier) + 1]
-    rows = query.matches(con, cfg, tiers=want, include_keyword=a.keyword)
+    rows = query.matches(con, cfg, tiers=want, include_keyword=a.keyword,
+                         acked="include" if a.acked else "hide")
     if not rows:
         print("nothing at or above tier", a.tier)
         return 0
@@ -88,11 +89,62 @@ def cmd_report(cfg, a):
             cur = r["tier"]
             print(f"\n== {query.TIER_LABEL[cur]} ==")
         flags = " ".join(query.flag_text(r))
+        if r.get("ack"):
+            flags = ("[acked] " if r["ack"]["state"] == "active" else f"[ack {r['ack']['state']}] ") + flags
         epss = f"epss {r['epss_pct'] * 100:.0f}%" if r.get("epss_pct") is not None else ""
         cvss = f"cvss {r['cvss']}" if r.get("cvss") is not None else ""
         print(f"{r['cve_id']:<18} {r['item_name'][:28]:<28} {r['status']:<9} {cvss:<9} {epss:<9} {flags}")
         if a.long:
             print("    " + (r.get("title") or r.get("description") or "")[:150])
+    return 0
+
+
+def cmd_ack(cfg, a):
+    from . import acks
+    con = _con(cfg)
+    cid = a.cve.upper()
+    try:
+        rows = acks.add(con, cfg, cid, a.item, a.note or "", days=a.days, until=a.until)
+    except ValueError as e:
+        print(f"cvescope ack: {e}", file=sys.stderr)
+        return 1
+    a_row = acks.load(con)[(cid, rows[0]["item_id"])]
+    for r in rows:
+        print(f"acknowledged {cid} on {r['item_name']}"
+              + (f" until {a_row['until']}" if a_row["until"] else " (no end date)"))
+    print("It comes back if the evidence gets worse. `cvescope unack` takes it back.")
+    return 0
+
+
+def cmd_unack(cfg, a):
+    from . import acks, query
+    con = _con(cfg)
+    cid = a.cve.upper()
+    names = query.item_names(con)
+    try:
+        removed = acks.remove(con, cid, a.item)
+    except ValueError as e:
+        print(f"cvescope unack: {e}", file=sys.stderr)
+        return 1
+    for iid in removed:
+        print(f"removed the acknowledgement of {cid} on {names.get(iid, iid)}")
+    return 0
+
+
+def cmd_acks(cfg, a):
+    from . import acks
+    con = _con(cfg)
+    rows = acks.list_all(con, cfg)
+    if not a.all:
+        rows = [r for r in rows if r["state"] != "resolved"]
+    if not rows:
+        print("nothing acknowledged" + ("" if a.all else " (--all includes resolved ones)"))
+        return 0
+    for r in rows:
+        end = f"until {r['until']}" if r["until"] else "no end date"
+        print(f"{r['cve_id']:<18} {r['item_name'][:28]:<28} {r['state']:<8} {r['created'][:10]}  {end:<16}  {r['note']}")
+        if r["reason"]:
+            print(f"    {'back because' if r['state'] == 'lapsed' else 'note'}: {r['reason']}")
     return 0
 
 
@@ -199,7 +251,26 @@ def main(argv=None) -> int:
     s.add_argument("--tier", choices=["act", "watch", "info"], default="watch")
     s.add_argument("--keyword", action="store_true", help="include keyword-only matches")
     s.add_argument("-l", "--long", action="store_true")
+    s.add_argument("--acked", action="store_true", help="include acknowledged matches")
     s.set_defaults(fn=cmd_report)
+
+    s = sub.add_parser("ack", help="acknowledge a CVE you've dealt with (hides it until the evidence gets worse)")
+    s.add_argument("cve")
+    s.add_argument("--item", help="item id, name, or part of a name (default: every item it shows up on)")
+    s.add_argument("--note", "-m", help="what you did, e.g. 'applied the opt-in fix'")
+    g = s.add_mutually_exclusive_group()
+    g.add_argument("--days", type=int, help="bring it back after this many days")
+    g.add_argument("--until", help="bring it back after this date (YYYY-MM-DD)")
+    s.set_defaults(fn=cmd_ack)
+
+    s = sub.add_parser("unack", help="take an acknowledgement back")
+    s.add_argument("cve")
+    s.add_argument("--item", help="item id, name, or part of a name (default: all of them)")
+    s.set_defaults(fn=cmd_unack)
+
+    s = sub.add_parser("acks", help="list acknowledgements and whether they still hold")
+    s.add_argument("--all", action="store_true", help="include ones that no longer match anything")
+    s.set_defaults(fn=cmd_acks)
 
     s = sub.add_parser("show", help="everything known about one CVE")
     s.add_argument("cve")

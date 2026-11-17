@@ -39,6 +39,8 @@ The write-up on my site covers why I built it and how it ranks things:
 - **Out in the wild:** recent KEV additions, newly weaponized CVEs, and the highest-EPSS new
   CVEs, whether you run the product or not.
 - **Alerts** via ntfy, Home Assistant, or any webhook, for changes at or above a tier you pick.
+- **Acknowledgements** for what you've already handled. They hide a CVE until the evidence
+  gets worse or an end date you set passes.
 
 ## Quick start
 
@@ -270,6 +272,30 @@ service = "notify.mobile_app_your_phone"
 `cvescope notify --test` sends one test message to every channel. `cvescope sync --dry-run`
 prints what it would send without marking anything as sent.
 
+## Acknowledging what you've handled
+
+Some act-now entries are things you've already dealt with: a fix Microsoft made opt-in that
+you've turned on, a service you've firewalled off, an upgrade that's booked. Acknowledge them
+and they leave act now, watch, the counts and the alerts:
+
+```
+cvescope ack CVE-2013-3900 --item minitop -m "applied the opt-in fix"
+cvescope ack CVE-2024-23897 -m "CLI disabled, upgrading Saturday" --days 7
+cvescope acks              # what's acknowledged, and whether it still holds
+cvescope unack CVE-2024-23897
+```
+
+Or open the CVE on the page and use **Acknowledge** under "Your inventory". Without `--item`,
+`ack` covers every item the CVE shows up on.
+
+An acknowledgement comes back by itself when its end date passes (the end date is optional), or
+when the evidence gets worse than it was when you acknowledged it: a higher tier, a new kind of
+exploitation evidence (added to KEV, a first Metasploit module, SSVC raised), or a **check**
+that turns out **affected**. The page and `cvescope report` then show it again with the reason.
+More of the same evidence (another GitHub PoC, EPSS moving within its tier) and a new version
+of the item, such as a monthly Windows build, don't bring it back. Each acknowledgement and
+removal is kept in the CVE's history. "Show acknowledged" on the page lists the hidden ones.
+
 ## Scheduling
 
 `--log FILE` appends everything a run prints to a file (rotated at 5 MB), which is what you want
@@ -304,13 +330,20 @@ The page is a list of what's vulnerable in your network. It binds to 127.0.0.1 a
 requests whose Host header isn't the address it serves on (which blocks DNS-rebinding tricks
 from other websites). If you bind it wider, put authentication in front of it.
 
+Acknowledging is the page's only write. It takes JSON only and refuses requests that another
+site started, so a page you visit can't acknowledge things behind your back.
+`serve.read_only = true` hides the buttons and refuses every write.
+
 ## Commands
 
 ```
 cvescope sync [--only kev,epss,...] [--rebaseline] [--dry-run] [--no-notify]
 cvescope inventory            collect versions and print them
 cvescope match                re-match without fetching
-cvescope report [--tier act|watch|info] [--keyword] [-l]
+cvescope report [--tier act|watch|info] [--keyword] [--acked] [-l]
+cvescope ack CVE-ID [--item NAME] [-m NOTE] [--days N | --until YYYY-MM-DD]
+cvescope unack CVE-ID [--item NAME]
+cvescope acks [--all]         acknowledgements and whether they still hold
 cvescope show CVE-2024-3400   everything known about one CVE (JSON)
 cvescope events [--days 7] [--all]
 cvescope status               feed health
