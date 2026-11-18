@@ -36,6 +36,14 @@ button { font: inherit; color: inherit; }
 .health { font: 12px var(--mono); color: var(--muted); white-space: nowrap; cursor: default; }
 .health.warn { color: var(--watch); }
 .health.bad { color: var(--act); font-weight: 600; }
+.syncbox { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.syncnow { padding: 2px 10px; border-radius: 999px; font: 12px var(--mono); white-space: nowrap; cursor: pointer;
+  background: none; border: 1px solid var(--line); color: var(--muted); }
+.syncnow:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.syncnow:disabled { cursor: progress; color: var(--accent); border-color: var(--accent); }
+.syncline { padding: 5px 18px; font: 12px var(--mono); color: var(--muted); background: var(--panel2);
+  border-bottom: 1px solid var(--line); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.syncline.bad { color: var(--act); background: var(--act-bg); }
 .banner { padding: 10px 18px; font-size: 13px; border-bottom: 1px solid var(--line); }
 .banner.warn { background: var(--watch-bg); color: var(--watch); }
 .banner.bad { background: var(--act-bg); color: var(--act); }
@@ -191,6 +199,7 @@ pre.aff { font: 12px var(--mono); background: var(--panel2); padding: 8px; borde
   .inv { position: static; max-height: none; border-right: 0; border-bottom: 1px solid var(--line); }
   .detail { position: fixed; inset: 0; z-index: 10; max-height: none; }
   .search input { width: 150px; }
+  .syncline { padding: 5px 16px; }
   .row { grid-template-columns: 4px minmax(0, 1fr); }
   .row .title, .row .nums, .row .meta, .row .why { grid-column: 2; }
 }

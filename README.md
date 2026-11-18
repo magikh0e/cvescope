@@ -43,6 +43,8 @@ The write-up on my site covers why I built it and how it ranks things:
   gets worse or an end date you set passes.
 - **A page you can slice:** the inventory grouped by host, filters, and the match list grouped
   by host or item with foldable groups, so even a few hundred "info" findings stay readable.
+  A **sync now** button runs a full sync from the page when you don't want to wait for the
+  schedule.
 
 ## Quick start
 
@@ -480,15 +482,25 @@ Every full sync leaves a record, and the page's header shows when the last one f
 older than `serve.stale_after_hours` (default 12), or a feed or collector failed, a banner says so,
 and so does `cvescope status`. A schedule that quietly stopped won't go unnoticed.
 
+The **sync now** button next to it runs the same full sync in the background without waiting for
+the schedule. The button counts the time, a strip under the header shows the sync's latest log
+line, and the page reloads its data when it ends. The output goes to `sync-web.log` in the data
+directory.
+
+One sync runs at a time. `cvescope sync` holds a lock file in the data directory while it
+runs, so the schedule, a terminal and the page's button never overlap: a second sync says
+another one is running and exits with status 1. The lock goes away with the process, so a sync
+that crashed or was killed can't leave it stuck.
+
 ## Keep the page private
 
 The page is a list of what's vulnerable in your network. It binds to 127.0.0.1 and rejects
 requests whose Host header isn't the address it serves on (which blocks DNS-rebinding tricks
 from other websites). If you bind it wider, put authentication in front of it.
 
-Acknowledging is the page's only write. It takes JSON only and refuses requests that another
-site started, so a page you visit can't acknowledge things behind your back.
-`serve.read_only = true` hides the buttons and refuses every write.
+The page's only writes are acknowledging and starting a sync. They take JSON only and refuse
+requests that another site started, so a page you visit can't acknowledge things or start syncs
+behind your back. `serve.read_only = true` hides those buttons and refuses every write.
 
 ## Commands
 

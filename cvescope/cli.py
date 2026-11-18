@@ -16,10 +16,23 @@ def _con(cfg):
 
 
 def cmd_sync(cfg, a):
+    from . import synclock
+    lock = synclock.SyncLock(cfg.data_dir)
+    started = db.now()
+    if not lock.acquire(started=started):
+        other = (synclock.held(cfg.data_dir) or {}).get("started")
+        print(f"another sync is running{f' (started {other})' if other else ''}; not starting a second one")
+        return 1
+    try:
+        return _sync(cfg, a, started)
+    finally:
+        lock.release()
+
+
+def _sync(cfg, a, started):
     from . import sources
     con = _con(cfg)
     only = a.only.split(",") if a.only else None
-    started = db.now()
     # inventory first: the distro source fetches only the releases your hosts run
     if not a.no_inventory and not only:
         cmd_inventory(cfg, a, con=con, quiet=True)

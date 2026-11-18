@@ -12,11 +12,15 @@
 <header class="top">
   <div class="brand"><img class="mark" src="/favicon.svg" alt="" width="24" height="24"> cvescope <a class="appver" id="appVersion" target="_blank" rel="noopener noreferrer"></a></div>
   <div class="totals" id="totals"></div>
-  <span class="health" id="health" role="status"></span>
+  <div class="syncbox">
+    <span class="health" id="health" role="status"></span>
+    <button class="syncnow" id="syncNow" type="button" hidden>sync now</button>
+  </div>
   <form class="search" id="searchForm" role="search">
     <input id="q" type="search" placeholder="CVE / GHSA / PSA ID or keyword" autocomplete="off" aria-label="Search CVEs and advisories">
   </form>
 </header>
+<div class="syncline" id="syncLine" hidden></div>
 <div class="banner" id="healthBanner" role="alert" hidden></div>
 
 <div class="layout">

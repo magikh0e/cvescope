@@ -3,19 +3,24 @@
 The page lists your inventory, so keep it on localhost: it is a map of what's
 vulnerable in your network. The Host check blocks DNS-rebinding from web pages.
 
-The only writes are acknowledgements (POST /api/ack, /api/unack). They take JSON only and
-refuse requests another site started (Origin / Sec-Fetch-Site), so a web page you visit
-can't acknowledge things behind your back. serve.read_only = true turns them off.
+The writes are acknowledgements (POST /api/ack, /api/unack and their /bulk forms) and
+starting a sync (POST /api/sync). They take JSON only and refuse requests another site
+started (Origin / Sec-Fetch-Site), so a web page you visit can't acknowledge things or start
+syncs behind your back. serve.read_only = true turns all of them off.
 """
 
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
+import threading
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from . import acks, db, query, report, vulnid
+from . import acks, db, query, report, synclock, vulnid
 
 WEB = Path(__file__).resolve().parent / "web"
 TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
@@ -40,7 +45,111 @@ def same_origin(headers, host: str) -> bool:
     return u.scheme in ("http", "https") and u.netloc.lower() == host
 
 
-def make_handler(cfg, allowed_hosts: set[str]):
+class SyncRunner:
+    """Runs `cvescope sync` in the background for the page's "sync now" button.
+
+    The sync is its own process, the same command a scheduled run uses, so the page stays
+    responsive and stopping the server doesn't cut a sync short. It logs to
+    <data_dir>/sync-web.log. The sync lock (synclock.py) keeps it from overlapping a scheduled
+    or terminal sync: the button refuses while one runs, and the page follows that one instead.
+    """
+
+    TAIL = 8          # log lines the page gets
+    LINE_MAX = 300
+
+    def __init__(self, cfg, command: list[str] | None = None):
+        self.cfg = cfg
+        self.command = command     # tests run a stub instead of a real sync
+        self.mutex = threading.Lock()
+        self.proc = None
+        self.started = self.finished = self.exit = None
+        self.offset = 0
+
+    @property
+    def log_path(self) -> Path:
+        return self.cfg.data_dir / "sync-web.log"
+
+    @property
+    def err_path(self) -> Path:   # anything printed before the log opens (a bad config, say)
+        return self.cfg.data_dir / "sync-web.err"
+
+    def argv(self) -> list[str]:
+        if self.command:
+            return list(self.command)
+        argv = [sys.executable, "-m", "cvescope"]
+        if self.cfg.path:
+            argv += ["--config", str(Path(self.cfg.path).resolve())]
+        return argv + ["--log", str(self.log_path), "sync"]
+
+    def _poll(self):   # with self.mutex held
+        if self.proc is not None and self.exit is None:
+            code = self.proc.poll()
+            if code is not None:
+                self.exit, self.finished = code, db.now()
+
+    def _mine(self) -> bool:
+        return self.proc is not None and self.exit is None
+
+    def start(self) -> tuple[int, str]:
+        with self.mutex:
+            self._poll()
+            if self._mine():
+                return 409, "a sync from this page is already running"
+            other = synclock.held(self.cfg.data_dir)
+            if other is not None:
+                return 409, "a sync is already running" + (f" (started {other['started']})" if other["started"] else "")
+            self.offset = self.log_path.stat().st_size if self.log_path.exists() else 0
+            env = dict(os.environ)
+            # the child imports the same cvescope this server runs, installed or from a checkout
+            env["PYTHONPATH"] = os.pathsep.join(filter(None, [str(Path(__file__).resolve().parent.parent),
+                                                              env.get("PYTHONPATH")]))
+            kw = ({"creationflags": subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP}
+                  if sys.platform == "win32" else {"start_new_session": True})
+            try:
+                with open(self.err_path, "wb") as err:
+                    self.proc = subprocess.Popen(self.argv(), stdin=subprocess.DEVNULL, stdout=err, stderr=err,
+                                                 env=env, **kw)
+            except OSError as e:
+                return 500, f"couldn't start the sync: {e}"
+            self.started, self.finished, self.exit = db.now(), None, None
+            return 202, "started"
+
+    def _lines(self) -> list[str]:
+        out: list[str] = []
+        for path, start in ((self.log_path, self.offset), (self.err_path, 0)):
+            try:
+                with open(path, "rb") as f:
+                    size = f.seek(0, 2)
+                    if size < start:   # the log rotated: this run starts the new file
+                        start = 0
+                    f.seek(max(start, size - 65536))
+                    text = f.read().decode("utf-8", "replace")
+            except OSError:
+                continue
+            out = [ln.strip()[: self.LINE_MAX] for ln in text.splitlines()
+                   if ln.strip() and not ln.startswith("=====")][-self.TAIL:]
+            if out:
+                break
+        return out
+
+    def status(self) -> dict:
+        with self.mutex:
+            self._poll()
+            mine = self._mine()
+        other = None if mine else synclock.held(self.cfg.data_dir)
+        out = {"running": mine or other is not None,
+               "by": "page" if mine else ("other" if other is not None else None),
+               "started": self.started if mine else (other or {}).get("started"),
+               "page": None}
+        if self.proc is not None:   # the last sync this page started, running or done
+            out["page"] = {"started": self.started, "finished": self.finished, "exit": self.exit,
+                           "lines": self._lines()}
+        return out
+
+
+def make_handler(cfg, allowed_hosts: set[str], runner: SyncRunner | None = None):
+    runner = runner or SyncRunner(cfg)
+
     class H(BaseHTTPRequestHandler):
         server_version = "cvescope"
         timeout = 30  # a client that announces a body and never sends it can't hold a thread forever
@@ -135,6 +244,9 @@ def make_handler(cfg, allowed_hosts: set[str]):
                 return self._json({"error": "bad JSON"}, 400)
             if limit == MAX_BODY_BULK:
                 return self._bulk(path, body)
+            if path == "/api/sync":
+                code, msg = runner.start()
+                return self._json({"ok": True} if code == 202 else {"error": msg}, code)
             cid = vulnid.canon(body.get("cve"))
             if not CVE_ID.match(cid):
                 return self._json({"error": "bad id"}, 400)
@@ -188,6 +300,8 @@ def make_handler(cfg, allowed_hosts: set[str]):
             u = urllib.parse.urlsplit(self.path)
             qs = {k: v[-1] for k, v in urllib.parse.parse_qs(u.query).items()}
             path = u.path
+            if path == "/api/sync":
+                return self._json(runner.status())
             if not path.startswith("/api/"):
                 name = "index.html" if path in ("/", "") else path.lstrip("/")
                 f = (WEB / name).resolve()

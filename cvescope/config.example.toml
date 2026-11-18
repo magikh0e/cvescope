@@ -55,7 +55,7 @@ keyword_matches = false   # also alert on keyword-only (low confidence) matches
 host = "127.0.0.1"   # the page is a map of your holes: keep it local
 port = 8096
 stale_after_hours = 12   # warn on the page when the last full sync is older than this
-# read_only = true       # hide the Acknowledge buttons and refuse every write from the page
+# read_only = true       # hide the Acknowledge and sync now buttons, refuse every write from the page
 
 # Ask NVD for CPE version ranges, only for "check" matches showing in act now / watch that the
 # CVE List can't settle. Off by default: each lookup tells NIST a CVE ID you care about.

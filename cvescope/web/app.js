@@ -72,7 +72,9 @@ async function loadSummary() {
     h("button", { class: "total watch", type: "button", title: "Public exploit or likely", onclick: () => showTiers(false) }, `${s.totals.watch} watch`),
     h("button", { class: "total info", type: "button", title: "Matches with no known exploit", onclick: () => showTiers(true) }, `${s.totals.info} info`),
   );
+  state.lastSync = (s.health && s.health.finished) || "";
   renderHealth(s.health);
+  $("#syncNow").hidden = state.readOnly;
   renderInventory();
   const hosts = [...new Set(s.items.map((it) => it.host))].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
   $("#fHost").replaceChildren(h("option", { value: "", text: "all hosts" }), ...hosts.map((x) => h("option", { value: x, text: x })));
@@ -156,6 +158,80 @@ function renderHealth(hl) {
   banner.className = `banner ${hl.level}`;
   banner.replaceChildren(...hl.problems.map((p) => h("p", { text: p })));
   banner.hidden = false;
+}
+
+// ---------- syncing from the page ----------
+// "sync now" runs the same `cvescope sync` your schedule does, as a background process on the
+// server, and reloads the page's data when it ends. One sync runs at a time: if the scheduled
+// one is already going, the button follows that one instead of starting a second.
+const syncPoll = { timer: null, watching: false };
+
+function clock(since) {
+  const s = Math.max(0, Math.round((Date.now() - Date.parse(since)) / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+function renderSync(st) {
+  const b = $("#syncNow"), line = $("#syncLine"), run = st.page;
+  const t = st.running && st.started ? " " + clock(st.started) : "";
+  b.hidden = state.readOnly;
+  b.disabled = st.running;
+  b.textContent = st.running ? `syncing${t}` : "sync now";
+  b.title = st.running ? "A sync is running. The page reloads its data when it ends."
+    : "Run a full sync now: inventory, every feed, matching. Takes a few minutes.";
+  let text = "", tip = "", bad = false;
+  if (st.running) {
+    text = st.by === "page" ? "sync log: " + (run && run.lines.length ? run.lines[run.lines.length - 1] : "starting…")
+      : "A scheduled or terminal sync is running. The page reloads its data when it ends.";
+    if (state.readOnly) text = `syncing${t} · ${text}`;
+    tip = st.by === "page" && run ? run.lines.join("\n") : "";
+  } else if (run && run.exit && run.finished > (state.lastSync || "")) {
+    // a failure only matters until a later sync (this page's or the schedule's) succeeds
+    text = `sync failed (exit ${run.exit})${run.lines.length ? ": " + run.lines[run.lines.length - 1] : ""}`;
+    tip = run.lines.join("\n") + "\n\nFull output: sync-web.log in the data directory.";
+    bad = true;
+  }
+  line.className = `syncline${bad ? " bad" : ""}`;
+  line.textContent = text;
+  line.title = tip;
+  line.hidden = !text;
+}
+
+async function pollSync() {
+  clearTimeout(syncPoll.timer);
+  let st;
+  try { st = await api("/api/sync"); } catch { return; }
+  renderSync(st);
+  if (st.running) {
+    syncPoll.watching = true;
+    syncPoll.timer = setTimeout(pollSync, 2000);
+    return;
+  }
+  if (syncPoll.watching) {
+    syncPoll.watching = false;
+    await loadSummary();
+    await loadMatches();
+    renderSync(st);   // again, now that the summary says when the last full sync finished
+  }
+}
+
+async function syncNow() {
+  const b = $("#syncNow");
+  b.disabled = true;
+  const r = await fetch("/api/sync", { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: "{}" })
+    .catch((err) => ({ ok: false, status: 0, json: async () => ({ error: err.message }) }));
+  if (!r.ok && r.status !== 409) {   // 409: one is already running, so follow it
+    const d = await r.json().catch(() => ({}));
+    const line = $("#syncLine");
+    line.className = "syncline bad";
+    line.textContent = `couldn't start a sync: ${d.error || r.status}`;
+    line.title = "";
+    line.hidden = false;
+    b.disabled = false;
+    return;
+  }
+  syncPoll.watching = true;
+  pollSync();
 }
 
 function markSelection() {
@@ -580,6 +656,7 @@ $("#bulkClear").addEventListener("click", () => { state.sel.clear(); renderMatch
 $("#fSort").addEventListener("change", () => { savePref("fSort"); renderMatches(); });
 $("#fGroup").addEventListener("change", () => { savePref("fGroup"); renderMatches(); });
 $("#closeDetail").addEventListener("click", closeDetail);
+$("#syncNow").addEventListener("click", syncNow);
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !e.target.closest(".ackform")) closeDetail(); });
 $("#searchForm").addEventListener("submit", (e) => { e.preventDefault(); const q = $("#q").value.trim(); if (q.length >= 3) doSearch(q); });
 
@@ -588,6 +665,7 @@ $("#searchForm").addEventListener("submit", (e) => { e.preventDefault(); const q
     loadPrefs();
     await loadSummary();
     await loadMatches();
+    pollSync();   // a sync already running (the schedule's, say) shows up, and the page reloads after it
     const m = /^#((?:CVE|GHSA|PSA|PYSEC|GO|RUSTSEC|MAL|OSV)-[\w.:-]{3,60})$/i.exec(location.hash);
     if (m) openCve(/^ghsa-/i.test(m[1]) ? "GHSA-" + m[1].slice(5).toLowerCase() : m[1].toUpperCase());
   } catch (err) {

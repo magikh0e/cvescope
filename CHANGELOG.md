@@ -13,6 +13,13 @@ releases are on the [releases page](https://github.com/magikh0e/cvescope/release
   by default because each lookup sends a CVE ID to ubuntu.com.
 - The match list can be grouped by host or by item, most urgent group first, with groups that
   fold away (fold all / unfold all). Folded rows don't count for "select all shown".
+- A **sync now** button next to the "synced ... ago" chip runs a full sync in the background.
+  It shows the elapsed time and the sync's latest log line, then reloads the page's data. A
+  failed run shows its exit code and last line. Output goes to `sync-web.log` in the data
+  directory. `serve.read_only` hides the button and refuses the request.
+- One sync at a time: `cvescope sync` holds a lock in the data directory, so a sync from the
+  page, the schedule and a terminal never overlap. A second one says another is running and
+  exits with status 1. The OS drops the lock when the process ends, however it ends.
 
 ### Changed
 - README screenshots retaken from the demo config: host grouping, filters, bulk acknowledge,
