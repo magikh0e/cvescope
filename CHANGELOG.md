@@ -5,6 +5,13 @@ releases are on the [releases page](https://github.com/magikh0e/cvescope/release
 
 ## [Unreleased]
 
+### Added
+- Findings without a CVE ID: Proxmox advisories that name no CVE (69 of 98 today) and GitHub/OSV
+  advisories with no CVE (GHSA-, PYSEC-, GO-, RUSTSEC-, MAL- for malicious releases) are kept
+  under their own ID and matched, ranked, acknowledged and alerted on like CVEs. The page links
+  each to its source (GitHub advisory, Proxmox forum post, osv.dev), `#GHSA-...` links open them,
+  and search finds them by ID. Proxmox advisories now keep their details text.
+
 ## [0.2.6] - 2026-11-17
 
 ### Added

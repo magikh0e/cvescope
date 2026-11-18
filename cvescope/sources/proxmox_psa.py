@@ -40,7 +40,7 @@ _CODENAME = {"buster": 6, "bullseye": 7, "bookworm": 8, "trixie": 9, "forky": 10
 _OTHER_PRODUCT = re.compile(r"\b(?:Proxmox Mail Gateway|PMG|Proxmox Backup Server|PBS|"
                             r"Proxmox Datacenter Manager|PDM)\b", re.I)
 _PVE_NAMED = re.compile(r"\b(?:Proxmox VE|Proxmox Virtual Environment)\b|(?<![\w.+~\-])PVE\b", re.I)
-PARSER = 2  # bump when parsing changes, so the next sync re-reads the whole thread
+PARSER = 3  # bump when parsing changes, so the next sync re-reads the whole thread
 
 
 def page_url(n: int) -> str:
@@ -144,7 +144,8 @@ def parse_post(text: str, url: str | None = None) -> list[dict]:
         cves = sorted(set(re.findall(r"CVE-\d{4}-\d{4,}", blk[:sig] if sig > 0 else blk)))
         out.append({"id": f"PSA-{head.group(2)}-{head.group(3)}", "rev": int(head.group(4)),
                     "full_id": head.group(1), "title": " ".join(head.group(5).split())[:200],
-                    "date": date, "cves": cves, "fixed": fixes(sec.get("fixed", [])), "url": url})
+                    "date": date, "cves": cves, "fixed": fixes(sec.get("fixed", [])), "url": url,
+                    "details": " ".join(" ".join(sec.get("details", [])).split())[:2000]})
     return out
 
 
@@ -168,11 +169,23 @@ def wanted(con) -> bool:
 
 def store(con, psas: list[dict]) -> None:
     con.executemany(
-        "INSERT INTO psa(id, rev, date, title, cves, fixed, url) VALUES(?,?,?,?,?,?,?) "
+        "INSERT INTO psa(id, rev, date, title, cves, fixed, url, details) VALUES(?,?,?,?,?,?,?,?) "
         "ON CONFLICT(id) DO UPDATE SET rev=excluded.rev, date=excluded.date, title=excluded.title, "
-        "cves=excluded.cves, fixed=excluded.fixed, url=excluded.url WHERE excluded.rev >= psa.rev",
-        [(p["id"], p["rev"], p["date"], p["title"], json.dumps(p["cves"]), json.dumps(p["fixed"]), p["url"])
-         for p in psas])
+        "cves=excluded.cves, fixed=excluded.fixed, url=excluded.url, details=excluded.details "
+        "WHERE excluded.rev >= psa.rev",
+        [(p["id"], p["rev"], p["date"], p["title"], json.dumps(p["cves"]), json.dumps(p["fixed"]), p["url"],
+          p.get("details")) for p in psas])
+
+
+def put_records(con) -> int:
+    """A record in the cve table for each PSA that names no CVE, filed under its PSA ID."""
+    recs = [{"id": pid, "assigner": "Proxmox", "published": date, "updated": date,
+             "title": f"Proxmox {pid}-{rev}: {title}" if title else f"Proxmox {pid}-{rev}",
+             "description": details or title, "refs": [url] if url else []}
+            for pid, rev, date, title, url, details in con.execute(
+                "SELECT id, rev, date, title, url, details FROM psa WHERE cves = '[]'")]
+    db.put_advisories(con, recs)
+    return len(recs)
 
 
 def sync(con, cfg) -> str:
@@ -194,6 +207,7 @@ def sync(con, cfg) -> str:
     if start == 1:
         con.execute("DELETE FROM psa")  # a full read replaces everything
     store(con, psas)
+    put_records(con)
     con.commit()
     db.source_ok(con, name, {"last_page": last, "parser": PARSER})
     total, with_cve = con.execute(

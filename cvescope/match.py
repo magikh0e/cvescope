@@ -489,7 +489,7 @@ def _apply_psa(con, it: dict, rows: dict) -> None:
         return
     line = ex.get("pve_major")
     found: dict[str, tuple] = {}
-    for pid, rev, cves, fixed in con.execute("SELECT id, rev, cves, fixed FROM psa WHERE cves != '[]'"):
+    for pid, rev, cves, fixed in con.execute("SELECT id, rev, cves, fixed FROM psa"):
         by_pkg: dict[str, list[tuple]] = {}
         for f in json.loads(fixed or "[]"):
             pkg, ver, ln = (list(f) + [None])[:3]
@@ -508,7 +508,7 @@ def _apply_psa(con, it: dict, rows: dict) -> None:
             fix, hit = got
             fix_line = next((ln for v, ln in by_pkg[pkg] if v == fix), None)
             other_line = fix_line if (line and fix_line and fix_line != line and not pkg.startswith("kernel:")) else None
-            for cve in json.loads(cves or "[]"):
+            for cve in json.loads(cves or "[]") or [pid]:  # no CVE: the PSA is the finding
                 prev = found.get(cve)
                 if prev is None or (hit and not prev[0]):
                     found[cve] = (hit, f"{pid}-{rev}", pkg, fix, inst, other_line)

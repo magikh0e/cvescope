@@ -179,10 +179,20 @@ every CVE a PSA names gets an answer for that host:
 - kernels compare per series against the **running** kernel, so a fixed kernel that's installed
   but not booted yet still counts as affected, with "reboot to run it".
 
-Most PSAs name no CVE (Proxmox finds many issues itself), so only the CVE-carrying ones show up
-here for now. Debian's own packages on a Proxmox host (OpenSSH, OpenSSL, glibc ...) aren't in
+Most PSAs name no CVE (Proxmox finds many issues itself); those show up under their PSA ID (see
+below). Debian's own packages on a Proxmox host (OpenSSH, OpenSSL, glibc ...) aren't in
 the API's list; add a `dpkg` collector over ssh for the host to check them against the Debian
 tracker.
+
+### Findings without a CVE ID
+
+Some real issues never get a CVE: most Proxmox advisories (PSA-...), many GitHub advisories for
+npm, PyPI and Maven packages (GHSA-...), and other OSV.dev entries (PYSEC-, GO-, RUSTSEC-, and
+MAL- for malicious package releases). cvescope keeps those under their own ID and treats them
+like CVEs: they're matched, ranked, acknowledged and alerted on the same way, the page links each
+one to its source (the GitHub advisory, the Proxmox forum post, osv.dev), and the search box
+finds them by ID. They carry no KEV, Metasploit or EPSS data, so they rank as info. An advisory
+that also has a CVE is always shown under the CVE.
 
 ### SBOMs
 

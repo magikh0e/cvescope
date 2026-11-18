@@ -13,7 +13,7 @@ import json
 import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
 
-from .. import db, net
+from .. import db, net, vulnid
 
 URL = "https://api.osv.dev/v1/query"
 BATCH_URL = "https://api.osv.dev/v1/querybatch"
@@ -37,8 +37,8 @@ def rows_for(vulns: list[dict], eco: str, name: str) -> list[tuple]:
     rows = []
     for v in vulns:
         cves = sorted({a for a in (v.get("aliases") or []) + [v.get("id") or ""] if a.startswith("CVE-")})
-        if not cves:
-            continue  # advisories with no CVE can't be tied to a CVE record
+        if not cves:  # no CVE: filed under its GHSA (or its own ID) and shown as an advisory
+            cves = [vulnid.pick([a for a in v.get("aliases") or [] if a.upper().startswith("GHSA-")] + [v.get("id")])]
         versions, ranges = [], []
         for a in v.get("affected") or []:
             p = a.get("package") or {}
@@ -81,11 +81,29 @@ def _fetch(vid: str) -> tuple[str, dict]:
     return vid, json.loads(body)
 
 
+SLIM = 2  # bump when _slim keeps more, so cached advisories are fetched again
+
+
 def _slim(v: dict) -> dict:
-    """Keep what rows_for reads; advisories carry long prose we never show."""
-    return {"id": v.get("id"), "modified": v.get("modified"), "aliases": v.get("aliases") or [],
+    """Keep what rows_for reads, plus what the page shows for an advisory without a CVE."""
+    sev = ((v.get("database_specific") or {}).get("severity") or "").upper()
+    return {"v": SLIM, "id": v.get("id"), "modified": v.get("modified"), "aliases": v.get("aliases") or [],
+            "summary": (v.get("summary") or "")[:300], "details": (v.get("details") or "")[:2000],
+            "published": v.get("published"), "severity": {"MODERATE": "MEDIUM"}.get(sev, sev) or None,
+            "vector": next((s.get("score") for s in v.get("severity") or [] if str(s.get("type", "")).startswith("CVSS")), None),
+            "refs": [r.get("url") for r in v.get("references") or [] if r.get("url")][:10],
             "affected": [{"package": a.get("package") or {}, "ranges": a.get("ranges") or [],
                           "versions": a.get("versions") or []} for a in v.get("affected") or []]}
+
+
+def advisory_record(vid: str, v: dict) -> dict:
+    """An advisory with no CVE, as a row for the cve table."""
+    first = (f"https://github.com/advisories/{vid}" if vid.startswith("GHSA-")
+             else f"https://osv.dev/vulnerability/{vid}")
+    return {"id": vid, "assigner": "GitHub" if vid.startswith("GHSA-") else "OSV.dev",
+            "published": v.get("published"), "updated": v.get("modified"), "title": v.get("summary"),
+            "description": v.get("details") or v.get("summary"), "severity": v.get("severity"),
+            "cvss_vector": v.get("vector"), "refs": [first] + [u for u in v.get("refs") or [] if u != first]}
 
 
 def sync(con, cfg) -> str:
@@ -93,7 +111,7 @@ def sync(con, cfg) -> str:
     if not pkgs:
         return "no items name an OSV package"
     ids = advisory_ids(pkgs)
-    cached = dict(con.execute("SELECT id, modified FROM osv_vuln").fetchall())
+    cached = dict(con.execute("SELECT id, modified FROM osv_vuln WHERE data LIKE ?", (f'%"v":{SLIM},%',)).fetchall())
     mod_of = {vid: mod for got in ids.values() for vid, mod in got.items()}
     need = sorted(vid for vid, mod in mod_of.items() if not mod or cached.get(vid) != mod)
     fetched = 0
@@ -113,6 +131,13 @@ def sync(con, cfg) -> str:
     rows = []
     for (eco, name), got in ids.items():
         rows += rows_for([data[v] for v in got if v in data], eco, name)
+    # advisories filed under their own ID get a record of their own, refreshed every sync
+    by_id = {}
+    for d in data.values():
+        for key in [d.get("id")] + list(d.get("aliases") or []):
+            by_id.setdefault(vulnid.canon(key), d)
+    db.put_advisories(con, [advisory_record(vid, by_id[vid]) for vid in {r[2] for r in rows}
+                            if not vulnid.is_cve(vid) and vid in by_id])
     con.execute("DELETE FROM osv_pkg")
     con.executemany("INSERT OR REPLACE INTO osv_pkg VALUES(?,?,?,?,?,?,?)", rows)
     con.commit()

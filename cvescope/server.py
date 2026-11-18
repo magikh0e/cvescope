@@ -16,12 +16,12 @@ import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from . import acks, db, query
+from . import acks, db, query, vulnid
 
 WEB = Path(__file__).resolve().parent / "web"
 TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
          ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml"}
-CVE_ID = re.compile(r"^CVE-\d{4}-\d{4,7}$")
+CVE_ID = vulnid.VULN_ID  # CVE IDs and advisory IDs (GHSA-, PSA-, ...)
 MAX_BODY = 4096
 MAX_BODY_BULK = 256 * 1024  # /api/ack/bulk and /api/unack/bulk: up to acks.BULK_MAX pairs
 DRAIN_MAX = 1024 * 1024     # how much of an oversized body gets read and dropped before refusing
@@ -114,7 +114,7 @@ def make_handler(cfg, allowed_hosts: set[str]):
                 return self._json({"error": "bad JSON"}, 400)
             if limit == MAX_BODY_BULK:
                 return self._bulk(path, body)
-            cid = str(body.get("cve") or "").upper()
+            cid = vulnid.canon(body.get("cve"))
             if not CVE_ID.match(cid):
                 return self._json({"error": "bad id"}, 400)
             item = body.get("item")
@@ -142,7 +142,7 @@ def make_handler(cfg, allowed_hosts: set[str]):
                 return self._json({"error": f"send 1 to {acks.BULK_MAX} pairs"}, 400)
             pairs = []
             for p in raw:
-                cid = str(p.get("cve") or "").upper() if isinstance(p, dict) else ""
+                cid = vulnid.canon(p.get("cve")) if isinstance(p, dict) else ""
                 item = p.get("item") if isinstance(p, dict) else None
                 if not CVE_ID.match(cid) or not isinstance(item, str) or not 0 < len(item) <= 300:
                     return self._json({"error": "bad pair"}, 400)
@@ -184,7 +184,7 @@ def make_handler(cfg, allowed_hosts: set[str]):
                                                     item_id=qs.get("item") or None,
                                                     acked="include" if qs.get("acked") == "1" else "hide"))
                 if path.startswith("/api/cve/"):
-                    cid = path.rsplit("/", 1)[-1].upper()
+                    cid = vulnid.canon(urllib.parse.unquote(path.rsplit("/", 1)[-1]))
                     if not CVE_ID.match(cid):
                         return self._json({"error": "bad id"}, 400)
                     d = query.cve_detail(con, cfg, cid)

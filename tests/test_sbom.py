@@ -189,7 +189,7 @@ class OsvBatch(unittest.TestCase):
             self.assertIn("(0 downloaded)", osvpkg.sync(self.con, None))      # unchanged: nothing refetched
         self.assertEqual(len(self.gets), 2)
         stored = json.loads(self.con.execute("SELECT data FROM osv_vuln WHERE id='GHSA-p6mc-m468-83gw'").fetchone()[0])
-        self.assertNotIn("details", stored)                                    # prose isn't kept
+        self.assertLessEqual(len(stored["details"]), 2000)                     # prose is capped
         item = {"id": "lodash-app", "version": "4.17.15",
                 "extra": {"osv": {"ecosystem": "npm", "name": "lodash", "label": "npm advisory"}}}
         rows = {}

@@ -8,7 +8,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from . import __version__, config, db
+from . import __version__, config, db, vulnid
 
 
 def _con(cfg):
@@ -103,7 +103,7 @@ def cmd_ack(cfg, a):
     from . import acks
     con = _con(cfg)
     failed = 0
-    for cid in dict.fromkeys(c.upper() for c in a.cve):
+    for cid in dict.fromkeys(vulnid.canon(c) for c in a.cve):
         try:
             rows = acks.add(con, cfg, cid, a.item, a.note or "", days=a.days, until=a.until)
         except ValueError as e:
@@ -114,7 +114,7 @@ def cmd_ack(cfg, a):
         for r in rows:
             print(f"acknowledged {cid} on {r['item_name']}"
                   + (f" until {a_row['until']}" if a_row["until"] else " (no end date)"))
-    if failed < len(set(c.upper() for c in a.cve)):
+    if failed < len(set(vulnid.canon(c) for c in a.cve)):
         print("It comes back if the evidence gets worse. `cvescope unack` takes it back.")
     return 1 if failed else 0
 
@@ -124,7 +124,7 @@ def cmd_unack(cfg, a):
     con = _con(cfg)
     names = query.item_names(con)
     failed = 0
-    for cid in dict.fromkeys(c.upper() for c in a.cve):
+    for cid in dict.fromkeys(vulnid.canon(c) for c in a.cve):
         try:
             removed = acks.remove(con, cid, a.item)
         except ValueError as e:
@@ -156,7 +156,7 @@ def cmd_acks(cfg, a):
 def cmd_show(cfg, a):
     from . import query
     con = _con(cfg)
-    d = query.cve_detail(con, cfg, a.cve.upper())
+    d = query.cve_detail(con, cfg, vulnid.canon(a.cve))
     if not d:
         print("not found")
         return 1

@@ -20,7 +20,7 @@ VULNS = [
     {"id": "GHSA-new0-0000-0000", "aliases": ["CVE-2026-99999"],   # no versions list: ranges decide
      "affected": [{"package": {"ecosystem": "PyPI", "name": "homeassistant"},
                    "ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "2026.10.0"}, {"fixed": "2026.11.3"}]}]}]},
-    {"id": "GHSA-nocv-e000-0000", "aliases": [],                    # no CVE: nothing to tie it to
+    {"id": "GHSA-nocv-e000-0000", "aliases": [],                    # no CVE: filed under its own GHSA ID
      "affected": [{"package": {"ecosystem": "PyPI", "name": "homeassistant"}, "versions": ["2026.11.2"]}]},
     {"id": "GHSA-othr-0000-0000", "aliases": ["CVE-2026-11111"],    # another package
      "affected": [{"package": {"ecosystem": "PyPI", "name": "hass-nabucasa"}, "versions": ["2026.11.2"]}]},
@@ -40,7 +40,8 @@ class Osv(unittest.TestCase):
 
     def test_rows(self):
         rows = osvpkg.rows_for(VULNS, "PyPI", "homeassistant")
-        self.assertEqual(sorted({r[2] for r in rows}), ["CVE-2025-65713", "CVE-2026-64825", "CVE-2026-99999"])
+        self.assertEqual(sorted({r[2] for r in rows}), ["CVE-2025-65713", "CVE-2026-64825", "CVE-2026-99999",
+                                                        "GHSA-nocv-e000-0000"])
         self.assertEqual({r[6] for r in rows if r[2] == "CVE-2026-64825"}, {"2026.6.0"})
 
     def test_advisories_decide(self):

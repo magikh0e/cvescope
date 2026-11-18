@@ -370,9 +370,13 @@ async function openCve(id, keepScroll) {
       h("pre", { class: "aff", text: d.affected.map((a) => `${a.v || "?"} / ${a.p || "?"} [${a.src}] default=${a.ds || "-"}\n` +
         (a.vs || []).map((v) => `   ${v.status || "?"}: ${v.version || ""}${v.lessThan ? " < " + v.lessThan : ""}${v.lessThanOrEqual ? " <= " + v.lessThanOrEqual : ""}`).join("\n")).join("\n") }));
   }
-  parts.push(h("h3", { text: "References" }), h("ul", { class: "ev" },
-    h("li", {}, link(`https://www.cve.org/CVERecord?id=${d.id}`, "cve.org record")),
-    h("li", {}, link(`https://nvd.nist.gov/vuln/detail/${d.id}`, "NVD")),
+  // a CVE links to cve.org and NVD; an advisory without a CVE (GHSA-, PSA-, ...) to its own page,
+  // which its source put first in refs
+  const own = d.id.startsWith("CVE-")
+    ? [h("li", {}, link(`https://www.cve.org/CVERecord?id=${d.id}`, "cve.org record")),
+      h("li", {}, link(`https://nvd.nist.gov/vuln/detail/${d.id}`, "NVD"))]
+    : [h("li", { class: "muted", text: `No CVE ID: this is ${d.assigner || "the vendor"}'s advisory, listed under its own ID.` })];
+  parts.push(h("h3", { text: "References" }), h("ul", { class: "ev" }, ...own,
     ...(d.refs || []).map((u) => h("li", {}, link(u)))));
   body.replaceChildren(...parts.filter(Boolean));
   const top = $("#detail").scrollTop;
@@ -515,8 +519,8 @@ $("#searchForm").addEventListener("submit", (e) => { e.preventDefault(); const q
     loadPrefs();
     await loadSummary();
     await loadMatches();
-    const m = /^#(CVE-\d{4}-\d{4,7})$/i.exec(location.hash);
-    if (m) openCve(m[1].toUpperCase());
+    const m = /^#((?:CVE|GHSA|PSA|PYSEC|GO|RUSTSEC|MAL|OSV)-[\w.:-]{3,60})$/i.exec(location.hash);
+    if (m) openCve(/^ghsa-/i.test(m[1]) ? "GHSA-" + m[1].slice(5).toLowerCase() : m[1].toUpperCase());
   } catch (err) {
     $("#matchList").replaceChildren(empty("Couldn't reach the cvescope API: " + err.message));
   }

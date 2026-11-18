@@ -117,7 +117,8 @@ BULK_MAX = 2000  # pairs per bulk call
 
 
 def _pairs(pairs) -> list[tuple[str, str]]:
-    out = list(dict.fromkeys((str(c).strip().upper(), str(i).strip()) for c, i in pairs))
+    from . import vulnid
+    out = list(dict.fromkeys((vulnid.canon(c), str(i).strip()) for c, i in pairs))
     if not out:
         raise ValueError("nothing selected")
     if len(out) > BULK_MAX:

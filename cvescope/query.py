@@ -6,7 +6,7 @@ import datetime as dt
 import json
 import re
 
-from . import acks, db
+from . import acks, db, vulnid
 
 TIER_LABEL = {"act": "Act now", "watch": "Watch", "info": "Info"}
 TIER_ORDER = {"act": 0, "watch": 1, "info": 2}
@@ -390,9 +390,9 @@ def hot(con, cfg, days=30, limit=60) -> dict:
 
 def search(con, cfg, q: str, limit=100) -> list[dict]:
     q = q.strip()
-    if q.upper().startswith("CVE-"):
+    if vulnid.PREFIX.match(q):  # an ID or the start of one: CVE-2024-, GHSA-, PSA-2026-
         rows = con.execute("SELECT id,title,description,cvss,published FROM cve WHERE id LIKE ? LIMIT ?",
-                           (q.upper() + "%", limit))
+                           (vulnid.canon(q) + "%", limit))
     else:
         like = f"%{q}%"
         rows = con.execute(

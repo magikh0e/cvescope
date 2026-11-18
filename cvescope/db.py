@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS osv_pkg(
 -- id is the base id (PSA-2026-00080), rev the latest revision seen; fixed is JSON
 -- [[package, version], ...] with kernels as ["kernel:7.0", "7.0.14-25"]
 CREATE TABLE IF NOT EXISTS psa(
-  id TEXT PRIMARY KEY, rev INTEGER, date TEXT, title TEXT, cves TEXT, fixed TEXT, url TEXT) WITHOUT ROWID;
+  id TEXT PRIMARY KEY, rev INTEGER, date TEXT, title TEXT, cves TEXT, fixed TEXT, url TEXT, details TEXT) WITHOUT ROWID;
 
 -- OSV.dev advisories by id, kept until they change (osv_pkg is rebuilt from these each sync)
 CREATE TABLE IF NOT EXISTS osv_vuln(
@@ -113,6 +113,25 @@ def _migrate(con) -> None:
     cols = {r[1] for r in con.execute("PRAGMA table_info(distro_fix)")}
     if "note" not in cols:
         con.execute("ALTER TABLE distro_fix ADD COLUMN note TEXT")
+    if "details" not in {r[1] for r in con.execute("PRAGMA table_info(psa)")}:
+        con.execute("ALTER TABLE psa ADD COLUMN details TEXT")
+
+
+# advisories without a CVE ID live in the cve table under their own ID (see vulnid.py)
+_ADV_COLS = ("id", "state", "assigner", "published", "updated", "title", "description", "cvss",
+             "cvss_version", "cvss_vector", "severity", "cwe", "ssvc_exploitation", "ssvc_automatable",
+             "ssvc_impact", "noprod", "affected", "refs")
+
+
+def put_advisories(con, recs: list[dict]) -> None:
+    """Insert or refresh advisory records (non-CVE IDs). Sources call this every sync, so a
+    CVE List rebaseline (which empties the cve table) loses nothing for long."""
+    con.executemany(
+        f"INSERT OR REPLACE INTO cve({','.join(_ADV_COLS)}) VALUES({','.join('?' * len(_ADV_COLS))})",
+        [(r["id"], "PUBLISHED", r.get("assigner"), r.get("published"), r.get("updated"),
+          (r.get("title") or "")[:300] or None, (r.get("description") or "")[:4000] or None, r.get("cvss"),
+          r.get("cvss_version"), r.get("cvss_vector"), r.get("severity"), None, None, None, None, 0, "[]",
+          json.dumps(r.get("refs") or [], separators=(",", ":"))) for r in recs])
 
 
 _NORM = re.compile(r"[^a-z0-9]+")
