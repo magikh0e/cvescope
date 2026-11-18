@@ -232,6 +232,17 @@ class Http(unittest.TestCase):
         self.cfg["serve"]["read_only"] = True
         self.assertEqual(self.post("/api/ack/bulk", {"pairs": ok})[0], 403)
 
+    def test_refusals_never_reset_the_connection(self):
+        # The server used to answer 403/413/415 without reading the request body. Closing a
+        # socket with unread data resets it (reliably on Windows), so clients saw a connection
+        # error instead of the refusal: about 1 in 100 here, and a flaky CI job.
+        body = json.dumps({"cve": "CVE-2024-0001", "note": "x" * 3000}).encode()
+        for _ in range(50):
+            self.assertEqual(self.post("/api/ack", body, ctype="text/plain")[0], 415)
+            self.assertEqual(self.post("/api/ack", b"x" * 200_000)[0], 413)
+            self.assertEqual(self.post("/api/ack/bulk", b"x" * 300_000)[0], 413)
+            self.assertEqual(self.post("/api/ack", body, Origin="https://evil.example")[0], 403)
+
     def test_read_only(self):
         self.cfg["serve"]["read_only"] = True
         self.assertEqual(self.post("/api/ack", {"cve": "CVE-2024-0001"})[0], 403)

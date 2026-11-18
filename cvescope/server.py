@@ -24,6 +24,7 @@ TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=u
 CVE_ID = re.compile(r"^CVE-\d{4}-\d{4,7}$")
 MAX_BODY = 4096
 MAX_BODY_BULK = 256 * 1024  # /api/ack/bulk and /api/unack/bulk: up to acks.BULK_MAX pairs
+DRAIN_MAX = 1024 * 1024     # how much of an oversized body gets read and dropped before refusing
 
 
 def same_origin(headers, host: str) -> bool:
@@ -43,6 +44,7 @@ def same_origin(headers, host: str) -> bool:
 def make_handler(cfg, allowed_hosts: set[str]):
     class H(BaseHTTPRequestHandler):
         server_version = "cvescope"
+        timeout = 30  # a client that announces a body and never sends it can't hold a thread forever
 
         def log_message(self, *a):
             pass
@@ -63,7 +65,35 @@ def make_handler(cfg, allowed_hosts: set[str]):
         def _json(self, obj, code=200):
             self._send(code, json.dumps(obj, default=str).encode(), "application/json")
 
+        def _take_body(self, limit: int) -> tuple[int, bytes]:
+            """Read the request body before any check can refuse the request.
+
+            Replying while request data sits unread makes the OS reset the connection when the
+            socket closes (Windows does it reliably), so the client got a reset instead of the
+            403/413/415. A body over the limit is read and dropped, up to DRAIN_MAX.
+            """
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                self.close_connection = True
+                return -1, b""
+            if n <= 0:
+                return n, b""
+            if n <= limit:
+                return n, self.rfile.read(n)
+            left = min(n, DRAIN_MAX)
+            while left > 0:
+                chunk = self.rfile.read(min(left, 65536))
+                if not chunk:
+                    break
+                left -= len(chunk)
+            self.close_connection = True
+            return n, b""
+
         def do_POST(self):
+            path = urllib.parse.urlsplit(self.path).path
+            limit = MAX_BODY_BULK if path in ("/api/ack/bulk", "/api/unack/bulk") else MAX_BODY
+            n, raw = self._take_body(limit)
             host = (self.headers.get("Host") or "").lower()
             if host not in allowed_hosts:
                 return self._send(403, b"bad host", "text/plain")
@@ -74,16 +104,10 @@ def make_handler(cfg, allowed_hosts: set[str]):
             ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
             if ctype != "application/json":
                 return self._json({"error": "send JSON"}, 415)
-            path = urllib.parse.urlsplit(self.path).path
-            limit = MAX_BODY_BULK if path in ("/api/ack/bulk", "/api/unack/bulk") else MAX_BODY
-            try:
-                n = int(self.headers.get("Content-Length") or 0)
-            except ValueError:
-                n = -1
             if not 0 < n <= limit:
                 return self._json({"error": "bad body size"}, 413 if n > limit else 400)
             try:
-                body = json.loads(self.rfile.read(n))
+                body = json.loads(raw)
                 if not isinstance(body, dict):
                     raise ValueError
             except ValueError:

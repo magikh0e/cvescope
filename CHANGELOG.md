@@ -5,6 +5,13 @@ releases are on the [releases page](https://github.com/magikh0e/cvescope/release
 
 ## [Unreleased]
 
+### Fixed
+- A write the page refused (from another site, not JSON, too large, or `serve.read_only`)
+  could reset the connection instead of answering 403/413/415, mostly on Windows: the server
+  replied without reading the request body. It reads the body first now (a body over the limit
+  is read and dropped, up to 1 MB), and drops a client that announces a body and never sends
+  it after 30 seconds.
+
 ## [0.2.4] - 2026-11-17
 
 ### Added
