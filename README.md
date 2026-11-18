@@ -228,6 +228,8 @@ a version becomes an item, and each one is checked against the best data there i
 The page groups the components under the SBOM's name, so filtering by host shows one image or
 app at a time. The demo config includes a sample SBOM (`examples/demo-sbom.cdx.json`).
 
+![The demo container's SBOM as a host: Log4Shell, Spring4Shell and lodash, each with the fixed release](https://raw.githubusercontent.com/magikh0e/cvescope/main/docs/sbom.png)
+
 ### Containers, endpoints and websites
 
 - **`docker`** runs `docker ps` (or `podman ps`) locally or through `command_prefix = ["ssh", "host"]`
@@ -435,6 +437,8 @@ scheduled task can keep one report per week. On the page, the **report** links n
 filters give the same thing for what you're looking at: the host you picked, and info only
 when it's included. Feed text is escaped for each format, including spreadsheet formulas in
 CSV.
+
+![An HTML report: counts, then each finding with why it ranks there and what fixes it](https://raw.githubusercontent.com/magikh0e/cvescope/main/docs/report.png)
 
 ## Scheduling
 

@@ -131,7 +131,8 @@ def tier(sig: dict, cve: dict, epss_pct, cfg) -> tuple[str, list[str]]:
     if ssvc == "poc":
         why.append("CISA SSVC: PoC public")
     if epss_pct is not None and epss_pct >= float(cfg["tiers"]["epss_watch_pct"]):
-        why.append(f"EPSS top {100 - epss_pct * 100:.0f}%")
+        top = 100 - epss_pct * 100  # 99.96th percentile -> "top 1%", never "top 0%"
+        why.append(f"EPSS top {max(1, round(top))}%")
     return ("watch" if why else "info"), why
 
 

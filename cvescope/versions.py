@@ -420,5 +420,8 @@ def eval_entry(entry: dict, version: str | None) -> tuple[str, str]:
         # Read literally that would flag every newer version; they mean "older than fixed".
         return "unaffected", "outside every affected range"
     if ds in ("affected", "unaffected"):
-        return ds, f"outside listed ranges (default {ds})"
+        # e.g. Jenkins lists only fixed/unaffected versions and marks everything else affected
+        if ds == "affected":
+            return ds, "not among the versions the record lists as fixed or unaffected; it marks the rest affected"
+        return ds, "outside every listed range; the record marks the rest unaffected"
     return "unaffected", "outside every listed range"

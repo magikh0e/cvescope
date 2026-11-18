@@ -37,11 +37,20 @@ def _link(vid: str, refs: list | None = None) -> str:
     return f"https://osv.dev/vulnerability/{vid}"
 
 
+def _clip(s: str, n: int) -> str:
+    """At most n characters, cut at a word with an ellipsis rather than mid-word."""
+    s = " ".join(str(s).split())
+    if len(s) <= n:
+        return s
+    cut = s[:n - 1].rsplit(" ", 1)[0]
+    return cut.rstrip(",;:") + "…"
+
+
 def _finding(r: dict, refs: dict) -> dict:
     a = r.get("ack") or {}
     return {"id": r["cve_id"], "tier": r["tier"], "why": r.get("why") or [], "status": r["status"],
             "host": r.get("host"), "item": r["item_name"], "version": r.get("item_version"),
-            "title": (r.get("title") or r.get("description") or "")[:240], "detail": r.get("detail") or "",
+            "title": _clip(r.get("title") or r.get("description") or "", 240), "detail": r.get("detail") or "",
             "cvss": r.get("cvss"), "epss_pct": r.get("epss_pct"), "flags": query.flag_text(r),
             "published": (r.get("published") or "")[:10], "first_seen": (r.get("first_seen") or "")[:10],
             "ack": {"state": a.get("state"), "note": a.get("note"), "until": a.get("until"),

@@ -116,3 +116,14 @@ class OtherDistroText(unittest.TestCase):
     def test_the_distro_itself_still_counts(self):
         e = {"p": "Fedora", "v": "Fedora Project", "vs": [{"status": "affected", "version": "prior to 31"}]}
         self.assertEqual(eval_entry(e, "30")[0], "affected")
+
+
+class DefaultStatusWording(unittest.TestCase):
+    def test_default_affected_reads_as_affected(self):
+        # Jenkins-style record: only the fixed lines are listed, everything else is affected
+        e = {"ds": "affected", "vs": [{"version": "2.442", "status": "unaffected"},
+                                      {"version": "2.426.3", "lessThan": "2.427", "status": "unaffected"}]}
+        st, why = eval_entry(e, "2.441")
+        self.assertEqual(st, "affected")
+        self.assertNotIn("outside", why)
+        self.assertIn("marks the rest affected", why)

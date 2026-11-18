@@ -85,6 +85,16 @@ class Build(unittest.TestCase):
         self.assertEqual(json.loads(report.render_json(d))["counts"]["act"], 1)
         self.assertEqual(len(rows), 4)                                           # 2 findings + 1 acknowledged
 
+    def test_titles_cut_at_a_word(self):
+        self.assertEqual(report._clip("allowing unauthenticated attackers to read files", 34),
+                         "allowing unauthenticated…")
+        self.assertEqual(report._clip("short", 34), "short")
+
+    def test_epss_top_never_reads_zero(self):
+        from cvescope import query
+        _, why = query.tier({}, {"cvss": 5}, 0.9996, self.cfg)
+        self.assertEqual(why, ["EPSS top 1%"])
+
     def test_cli_out_with_date(self):
         out = os.path.join(self.tmp, "reports", "r-%Y-%m-%d.html")
         with redirect_stdout(io.StringIO()) as printed:

@@ -5,6 +5,17 @@ releases are on the [releases page](https://github.com/magikh0e/cvescope/release
 
 ## [Unreleased]
 
+### Changed
+- README screenshots retaken from the demo config: host grouping, filters, bulk acknowledge,
+  report links and the version label, plus new shots of an SBOM host and an HTML report.
+
+### Fixed
+- A record that lists only fixed or unaffected versions and marks the rest affected (Jenkins
+  does this) gave the reason "outside listed ranges (default affected)" for an affected version.
+  It now says the version isn't among those the record lists as fixed, and the rest are affected.
+- Findings in EPSS's very top percentile read "EPSS top 0%"; they read "top 1%" now.
+- Report titles are cut at a word with an ellipsis instead of mid-word.
+
 ## [0.2.6] - 2026-11-17
 
 ### Added
