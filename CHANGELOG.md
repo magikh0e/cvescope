@@ -5,6 +5,8 @@ releases are on the [releases page](https://github.com/magikh0e/cvescope/release
 
 ## [Unreleased]
 
+## [0.2.9] - 2026-11-18
+
 ### Fixed
 - "Fix available" no longer counts a fix that isn't out yet. A CVE record can name its fixed
   release ahead of time (OpenSSL's said "fixed in 3.5.10" while 3.5.9 was the newest 3.5
@@ -252,7 +254,8 @@ First release.
 - Act now / watch / info tiers, change events, and ntfy, Home Assistant and webhook alerts.
 - A local web page (127.0.0.1, Host header checked) and a CLI.
 
-[Unreleased]: https://github.com/magikh0e/cvescope/compare/v0.2.8...HEAD
+[Unreleased]: https://github.com/magikh0e/cvescope/compare/v0.2.9...HEAD
+[0.2.9]: https://github.com/magikh0e/cvescope/compare/v0.2.8...v0.2.9
 [0.2.8]: https://github.com/magikh0e/cvescope/compare/v0.2.7...v0.2.8
 [0.2.7]: https://github.com/magikh0e/cvescope/compare/v0.2.6...v0.2.7
 [0.2.6]: https://github.com/magikh0e/cvescope/compare/v0.2.5...v0.2.6
