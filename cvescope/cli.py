@@ -234,7 +234,7 @@ def main(argv=None) -> int:
     sub = p.add_subparsers(dest="cmd", required=True)
 
     s = sub.add_parser("sync", help="pull every feed, refresh inventory, match, notify")
-    s.add_argument("--only", help="comma list: cvelist,kev,epss,metasploit,nuclei,exploitdb,github_poc,local_archive,distro,freebsd")
+    s.add_argument("--only", help="comma list: cvelist,kev,epss,metasploit,nuclei,exploitdb,github_poc,local_archive,distro,freebsd,osv")
     s.add_argument("--rebaseline", action="store_true", help="re-download the full CVE List")
     s.add_argument("--no-inventory", action="store_true")
     s.add_argument("--no-notify", action="store_true")

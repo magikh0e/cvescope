@@ -88,7 +88,7 @@ Each `[[inventory]]` block in the config is one collector:
 | `opnsense` | OPNsense, its FreeBSD base and OpenSSL, plus OpenSSH, Unbound, dnsmasq, Suricata and other packages (or all of them), checked against FreeBSD's VuXML | API key/secret |
 | `unifi` | UniFi Network version and every adopted device's firmware | Control Plane API key |
 | `pihole` | Pi-hole v6 core, FTL and web versions | app password |
-| `homeassistant` | HA Core (and OS + add-ons with an admin token) | long-lived token |
+| `homeassistant` | HA Core (checked against Home Assistant's own advisories), plus OS, Supervisor, add-ons and ESPHome devices from its update entities | long-lived token |
 
 Secrets never go in the config file. Point at them with `token_file` / `token_env`
 (or `password_file`, `apikey_file`, `key_file` + `secret_file`).
@@ -147,6 +147,19 @@ exact build (`openssl35 3.5.9`, `sudo 1.9.17p2_4`, `dnsmasq 2.93,1`) and the bas
 `packages = "all"` on the `opnsense` collector adds every installed package, which makes the
 check equivalent to `pkg audit` on the firewall. FreeBSD VMs found through Proxmox get the
 base-release check too. VuXML is ~1.4 MB and only downloaded when you have one of these.
+
+### Home Assistant
+
+Home Assistant Core is published on PyPI as `homeassistant`, and Home Assistant's GitHub security
+advisories reach [OSV.dev](https://osv.dev/) listing every release each one affects. cvescope asks
+OSV.dev for them on each sync (one small query) and lets them decide the CVEs they name: affected
+when your release is listed ("fixed in 2026.6.0, installed 2026.5.4; update available: 2026.6.1"),
+not_affected otherwise. That also settles old "description mentions Home Assistant" matches an
+advisory covers.
+
+The OS, Supervisor, add-on and ESPHome device versions come from Home Assistant's update
+entities, which any long-lived token can read (the Supervisor API needs an admin token). Those
+match against the CVE List as usual; Home Assistant OS has no advisory feed of its own.
 
 ### Containers, endpoints and websites
 
@@ -253,6 +266,7 @@ live in `cvescope/collectors/packages.py`; add your own per item with `aliases =
 | [Debian security tracker](https://security-tracker.debian.org/) JSON | fixed package version per Debian release | ~15 MB, only if you run Debian |
 | [Ubuntu OVAL](https://security-metadata.canonical.com/oval/) | fixed package version per Ubuntu release | ~2 MB per release you run |
 | [FreeBSD VuXML](https://vuxml.freebsd.org/) | affected package builds and base-system patch levels, as `pkg audit` uses them | ~1.4 MB, only if you run OPNsense or FreeBSD |
+| [OSV.dev](https://osv.dev/) | Home Assistant Core's security advisories (PyPI `homeassistant`) with every affected release | one small query per sync, only if you run Home Assistant |
 
 ### Optional: NVD lookup
 

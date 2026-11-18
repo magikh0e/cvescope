@@ -51,6 +51,12 @@ CREATE TABLE IF NOT EXISTS vuxml(
   package TEXT, cve_id TEXT, vid TEXT, ranges TEXT, topic TEXT, sa TEXT,
   PRIMARY KEY(package, cve_id, vid)) WITHOUT ROWID;
 
+-- OSV.dev advisories for packages an item names (Home Assistant Core = PyPI homeassistant):
+-- the releases each advisory affects (versions, JSON list) and its ranges as a fallback
+CREATE TABLE IF NOT EXISTS osv_pkg(
+  ecosystem TEXT, package TEXT, cve_id TEXT, osv_id TEXT, versions TEXT, ranges TEXT, fixed TEXT,
+  PRIMARY KEY(ecosystem, package, cve_id, osv_id)) WITHOUT ROWID;
+
 -- optional NVD CPE ranges for CVEs the CVE List can't settle (see sources/nvd.py)
 CREATE TABLE IF NOT EXISTS nvd_cpe(
   cve_id TEXT PRIMARY KEY, fetched TEXT, status TEXT, cpes TEXT) WITHOUT ROWID;

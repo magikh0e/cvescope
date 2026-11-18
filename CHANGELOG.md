@@ -28,6 +28,13 @@ releases are on the [releases page](https://github.com/magikh0e/cvescope/release
   only fetched when the inventory has OPNsense or FreeBSD), and `packages = "all"` on the
   `opnsense` collector for every installed package.
 
+- Home Assistant Core is checked against Home Assistant's own security advisories (OSV.dev,
+  PyPI `homeassistant`), which list every affected release. The reason names the advisory and
+  the fixed release, and says when Home Assistant offers an update. New source `osv`.
+- The `homeassistant` collector reads Home Assistant's update entities, so Home Assistant OS,
+  the Supervisor, add-ons and ESPHome device firmware show up with any long-lived token. Before,
+  OS and add-ons needed an admin token.
+
 ### Changed
 - A version field that names another distro's releases ("Fedora version prior to 31", "all
   RHEL versions") no longer counts as an affected range for your product.

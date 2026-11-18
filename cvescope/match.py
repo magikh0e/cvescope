@@ -321,6 +321,68 @@ def _apply_vuxml(con, it: dict, rows: dict) -> None:
             rows[key] = ("not_affected", "vuxml", f"{label}{adv}: {why}, installed {ver}")
 
 
+def _osv_in_ranges(ver: str, ranges) -> bool | None:
+    """OSV events (introduced / fixed / last_affected) against a version; None if there are none."""
+    if not ranges:
+        return None
+    for evs in ranges:
+        intro = None
+        for k, val in evs:
+            if k == "introduced":
+                intro = val
+            elif k in ("fixed", "last_affected") and intro is not None:
+                lo = intro == "0" or cmp(ver, intro) >= 0
+                hi = cmp(ver, val) < 0 if k == "fixed" else cmp(ver, val) <= 0
+                if lo and hi:
+                    return True
+                intro = None
+        if intro is not None and (intro == "0" or cmp(ver, intro) >= 0):
+            return True  # introduced and never fixed
+    return False
+
+
+def _apply_osv(con, it: dict, rows: dict) -> None:
+    """Items that name an OSV package (Home Assistant Core): the vendor's advisories decide.
+
+    Every CVE an advisory names gets a row: affected when the installed release is one the
+    advisory lists, not_affected otherwise. That also settles keyword-only matches the
+    advisories cover. CVEs no advisory names keep the upstream answer.
+    """
+    ex = it.get("extra") or {}
+    o, ver = ex.get("osv"), str(it.get("version") or "")
+    if not (isinstance(o, dict) and ver):
+        return
+    found: dict[str, tuple] = {}
+    for cve, oid, versions, ranges, fixed in con.execute(
+            "SELECT cve_id, osv_id, versions, ranges, fixed FROM osv_pkg WHERE ecosystem=? AND package=?",
+            (o.get("ecosystem"), o.get("name"))):
+        vs = json.loads(versions or "[]")
+        hit = (ver in vs or ver.lstrip("v") in vs) if vs else _osv_in_ranges(ver, json.loads(ranges or "[]"))
+        if hit is None:
+            continue
+        prev = found.get(cve)
+        if prev is None or (hit and not prev[0]) or \
+                (hit == prev[0] and oid.startswith("GHSA") and not prev[1].startswith("GHSA")):
+            found[cve] = (hit, oid, fixed)
+    if not found:
+        return
+    ids = list(found)
+    known = {r[0] for r in con.execute(
+        f"SELECT id FROM cve WHERE state='PUBLISHED' AND id IN ({','.join('?' * len(ids))})", ids)}
+    label = o.get("label") or f"OSV {o.get('ecosystem')} {o.get('name')}"
+    latest = ex.get("latest_version")
+    for cve, (hit, oid, fixed) in found.items():
+        if cve not in known:
+            continue
+        if hit:
+            fix = f"fixed in {fixed}, " if fixed else ""
+            offer = f"; update available: {latest}" if latest and latest != ver else ""
+            rows[(cve, it["id"])] = ("affected", "osv", f"{label} {oid}: {fix}installed {ver}{offer}")
+        else:
+            why = f"fixed in {fixed}" if fixed else "outside the affected releases"
+            rows[(cve, it["id"])] = ("not_affected", "osv", f"{label} {oid}: {why}, installed {ver}")
+
+
 def run(con, cfg) -> str:
     items = []
     for r in con.execute("SELECT * FROM item"):
@@ -350,6 +412,7 @@ def run(con, cfg) -> str:
                 new_rows[(row["id"], it["id"])] = (status, how, reason)
         _apply_distro(con, it, new_rows)
         _apply_vuxml(con, it, new_rows)
+        _apply_osv(con, it, new_rows)
 
     # keyword pass: only CVEs whose record names no product at all (mostly pre-2023 "n/a")
     kw_items = [(it, re.compile(r"\b(?:" + "|".join(re.escape(k) for k in it["keywords"]) + r")\b", re.I))

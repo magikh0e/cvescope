@@ -27,6 +27,7 @@ DEFAULTS = {
         "distro": True,
         "distro_releases": [],
         "freebsd": True,
+        "osv": True,
     },
     "notify": {
         "min_tier": "act",

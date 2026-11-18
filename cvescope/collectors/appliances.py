@@ -162,33 +162,68 @@ def pihole(e: dict) -> list[dict]:
 
 # ---- Home Assistant -----------------------------------------------------
 
+HA_OS_ALIASES = ["home assistant:home assistant operating system", "home assistant:os"]
+HA_SUPERVISOR_ALIASES = ["home assistant:supervisor", "home assistant:home assistant supervisor"]
+_ADDON_ICON = re.compile(r"^/api/hassio/addons/([^/]+)/icon")
+
+
+def _app_for(name: str):
+    key = (name or "").lower().replace("-", " ")
+    return next(((disp, al) for app, (disp, al) in packages.APPS.items() if app in key), None)
+
+
+def ha_update_items(states: list[dict], addons: bool = True) -> tuple[dict, list[dict]]:
+    """update.* entities -> (Core's update entity attributes, items for OS, Supervisor, add-ons
+    and ESPHome devices). Any long-lived token can read these; the hassio API needs an admin."""
+    core, out = {}, []
+    for s in states:
+        if not str(s.get("entity_id", "")).startswith("update."):
+            continue
+        a = s.get("attributes") or {}
+        inst, latest, title = a.get("installed_version"), a.get("latest_version"), a.get("title") or ""
+        if not inst:
+            continue
+        up = {"latest_version": latest} if latest and latest != inst else {}
+        addon = _ADDON_ICON.match(str(a.get("entity_picture") or ""))
+        if title == "Home Assistant Core":
+            core = {"latest_version": latest}
+        elif title == "Home Assistant Operating System":
+            out.append(item("Home Assistant OS", "home assistant", "operating system", inst,
+                            aliases=HA_OS_ALIASES, **up))
+        elif title == "Home Assistant Supervisor":
+            out.append(item("Home Assistant Supervisor", "home assistant", "supervisor", inst,
+                            aliases=HA_SUPERVISOR_ALIASES, **up))
+        elif addon and addons:
+            app = _app_for(title)
+            if app:
+                out.append(item(f"{app[0]} (HA add-on)", version=inst, aliases=app[1],
+                                addon=addon.group(1), addon_version=True, **up))
+        elif title == "ESPHome" and a.get("device_class") == "firmware":
+            dev = re.sub(r"\s+firmware$", "", a.get("friendly_name") or "device", flags=re.I)
+            out.append(item(f"ESPHome firmware ({dev})", "esphome", "esphome", inst, **up))
+    return core, out
+
+
 def homeassistant(e: dict) -> list[dict]:
-    """url, token_file or token_env (long-lived access token). Supervisor info and
-    add-ons need an admin token through the hassio proxy; skipped quietly when refused."""
+    """url, token_file or token_env (long-lived access token, any user).
+    Core, plus OS, Supervisor, add-ons and ESPHome devices from HA's update entities. Core is
+    checked against Home Assistant's own advisories (OSV.dev, PyPI `homeassistant`)."""
     c = _client(e)
     h = {"Authorization": "Bearer " + secret(e, "token")}
     cfg = c.get("/api/config", h)
-    out = [item(e.get("name") or "Home Assistant Core", "home assistant", "home assistant core",
-                cfg.get("version"),
+    try:
+        core_up, rest = ha_update_items(c.get("/api/states", h), e.get("addons", True))
+    except net.HTTPStatus:
+        core_up, rest = {}, []
+    ver = cfg.get("version")
+    extra = {"osv": {"ecosystem": "PyPI", "name": "homeassistant", "label": "Home Assistant advisory"}}
+    if core_up.get("latest_version") and core_up["latest_version"] != ver:
+        extra["latest_version"] = core_up["latest_version"]
+    out = [item(e.get("name") or "Home Assistant Core", "home assistant", "home assistant core", ver,
                 aliases=["home assistant:core", "home assistant:home assistant",
                          "home assistant:homeassistant", "home assistant:home assistant*"],
-                keywords=["Home Assistant"])]
-    try:
-        osv = (c.get("/api/hassio/os/info", h).get("data") or {}).get("version")
-        if osv:
-            out.append(item("Home Assistant OS", "home assistant", "operating system", osv,
-                            aliases=["home assistant:home assistant operating system", "home assistant:os"]))
-        if e.get("addons", True):
-            for a in (c.get("/api/hassio/addons", h).get("data") or {}).get("addons") or []:
-                key = (a.get("name") or "").lower().replace("-", " ")
-                for app, (disp, al) in packages.APPS.items():
-                    if app in key:
-                        out.append(item(f"{disp} (HA add-on)", version=a.get("version"), aliases=al,
-                                        addon=a.get("slug"), addon_version=True))
-                        break
-    except net.HTTPStatus:
-        pass
-    return out
+                keywords=["Home Assistant"], **extra)]
+    return out + rest
 
 
 # ---- UniFi Network ------------------------------------------------------

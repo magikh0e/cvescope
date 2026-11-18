@@ -73,6 +73,26 @@ def get_since(url: str, since: str | None = None, timeout: int = 300) -> tuple[b
         return body, r.headers.get("Last-Modified")
 
 
+def post_json(url: str, payload: dict, timeout: int = 120, tries: int = 3) -> dict:
+    """POST a JSON body and decode the JSON reply (query APIs such as OSV.dev)."""
+    data = json.dumps(payload).encode()
+    h = {"User-Agent": UA, "Content-Type": "application/json"}
+    last = None
+    for i in range(tries):
+        try:
+            req = urllib.request.Request(url, data=data, headers=h, method="POST")
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            if e.code in (400, 401, 403, 404, 410):
+                raise HTTPStatus(e.code, url) from None
+            last = HTTPStatus(e.code, url)
+        except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
+            last = e
+        time.sleep(2 * (i + 1))
+    raise last  # type: ignore[misc]
+
+
 def download(url: str, dest: Path, etag: str | None = None, timeout: int = 300,
              progress: bool = False) -> str | None:
     """Stream a URL to dest (atomic rename). Returns the new ETag."""

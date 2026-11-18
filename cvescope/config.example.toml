@@ -23,6 +23,7 @@ github_poc = true       # nomi-sec/PoC-in-GitHub, shallow git clone (~85 MB, nee
 distro = true           # Debian/Ubuntu trackers, only for releases your inventory runs
 # distro_releases = ["debian:12", "ubuntu:noble"]   # fetch these even if no host reports them
 freebsd = true          # FreeBSD VuXML for OPNsense packages and FreeBSD base releases
+osv = true              # OSV.dev advisories for Home Assistant Core (PyPI homeassistant)
 
 # Your own exploit/advisory folders: any file that mentions a CVE gets linked to it.
 # [[sources.local_archive]]
@@ -176,7 +177,7 @@ version = "30.0.4"
 # password_file = "~/.secrets/pihole"
 # pin_sha256 = "..."
 
-# Home Assistant (long-lived token; add-ons and OS need an admin token)
+# Home Assistant (any user's long-lived token; OS, Supervisor and add-ons come from update entities)
 # [[inventory]]
 # type = "homeassistant"
 # url = "http://homeassistant.local:8123"
