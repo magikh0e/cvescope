@@ -23,7 +23,7 @@ FEED = {"generated_at": "2026-11-18T09:37:30+00:00", "result": [
 
 AFFECTED = [{"v": "OpenSSL", "p": "OpenSSL",
              "vs": [{"version": "3.5.0", "lessThan": "3.5.10", "status": "affected", "versionType": "semver"}]}]
-NOTE = " (not released yet: the newest 3.5 release is 3.5.9)"
+NOTE = " (not released yet per endoflife.date: the newest 3.5 release is 3.5.9)"
 
 
 class Lines(unittest.TestCase):
@@ -45,25 +45,37 @@ class Lines(unittest.TestCase):
         self.assertIsNone(u("", self.LINES))
 
 
+def load(con, feed=FEED):
+    """Run the real sync against a canned feed; -> (summary, the ETag it sent)."""
+    sent = []
+
+    def get(url, etag=None, timeout=120, compressed=False):
+        sent.append(etag)
+        return json.dumps(feed).encode(), '"e1"'
+    with mock.patch.object(endoflife.net, "get", get):
+        msg = endoflife.sync(con, config.Config(copy.deepcopy(config.DEFAULTS)))
+    return msg, sent[0]
+
+
 class Feed(unittest.TestCase):
     def test_parse(self):
-        cycles, cpes = endoflife.parse(FEED)
-        self.assertEqual(cycles, [("openssl", "3.6", "3.6.5", "2026-09-29"), ("openssl", "3.5", "3.5.9", "2026-09-29"),
-                                  ("freebsd", "15.1", "15.1", "2026-06-02")])
+        cycles, cpes, products = endoflife.parse(FEED)
+        self.assertEqual([c[:4] for c in cycles], [
+            ("openssl", "3.6", "3.6.5", "2026-09-29"), ("openssl", "3.5", "3.5.9", "2026-09-29"),
+            ("openssl", "1.0.2", None, None), ("freebsd", "15.1", "15.1", "2026-06-02")])
         self.assertEqual(cpes, [("freebsd", "freebsd", "freebsd"), ("openssl", "openssl", "openssl")])
+        self.assertEqual(products[0], ("openssl", "openssl", None, "https://endoflife.date/openssl"))
 
     def test_sync_keeps_the_last_good_copy(self):
         con = db.connect(":memory:")
-        cfg = config.Config(copy.deepcopy(config.DEFAULTS))
-        with mock.patch.object(endoflife.net, "get", lambda url, etag=None, timeout=120, compressed=False:
-                               (json.dumps(FEED).encode(), '"e1"')):
-            self.assertEqual(endoflife.sync(con, cfg), "3 release lines for 2 products")
+        self.assertEqual(load(con), ("4 release lines for 3 products", None))
         self.assertEqual(db.source_get(con, "endoflife")["etag"], '"e1"')
-        with mock.patch.object(endoflife.net, "get", lambda url, etag=None, timeout=120, compressed=False:
-                               (b'{"result": []}', '"e2"')):
-            with self.assertRaises(ValueError):
-                endoflife.sync(con, cfg)
-        self.assertEqual(con.execute("SELECT COUNT(*) FROM eol_cycle").fetchone()[0], 3)
+        self.assertEqual(load(con)[1], '"e1"')     # conditional GET from then on
+        db.source_ok(con, "endoflife", {"parser": 1})
+        self.assertIsNone(load(con)[1])            # an older parser's copy is fetched again in full
+        with self.assertRaises(ValueError):
+            load(con, {"result": []})
+        self.assertEqual(con.execute("SELECT COUNT(*) FROM eol_cycle").fetchone()[0], 4)
 
 
 class Matching(unittest.TestCase):
@@ -75,10 +87,8 @@ class Matching(unittest.TestCase):
         con.execute("INSERT INTO cve(id,state,title,published,affected) VALUES('CVE-2026-0101','PUBLISHED','t',"
                     "'2026-11-10',?)", (json.dumps(AFFECTED),))
         con.execute("INSERT INTO cve_product VALUES('CVE-2026-0101','openssl','openssl')")
-        cycles, cpes = endoflife.parse(FEED)
-        con.executemany("INSERT INTO eol_cycle VALUES(?,?,?,?)", cycles)
-        con.executemany("INSERT INTO eol_cpe VALUES(?,?,?)", cpes)
         con.commit()
+        load(con)
 
     def row(self):
         return dict(self.con.execute("SELECT status, how, detail FROM match WHERE cve_id='CVE-2026-0101'").fetchone())

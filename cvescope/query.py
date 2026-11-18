@@ -6,7 +6,7 @@ import datetime as dt
 import json
 import re
 
-from . import __version__, acks, db, vulnid
+from . import __version__, acks, db, eol, sources, vulnid
 from .match import fix_state
 
 TIER_LABEL = {"act": "Act now", "watch": "Watch", "info": "Info"}
@@ -363,12 +363,18 @@ def summary(con, cfg) -> dict:
         it["ruled_out"] = nots.get(it["id"], 0)
         it["extra"] = json.loads(it["extra"] or "{}")
         it["host"] = hosts.get(it["id"]) or host_of(it["name"], it["collector"])
+    ends = eol.for_items(con, items)
+    for it in items:
+        it["eol"] = ends.get(it["id"])
     src = [dict(r) for r in con.execute("SELECT name,last_ok,last_try,last_error FROM source ORDER BY name")]
+    for s in src:
+        s.update(sources.credit(s["name"]))
     totals = {"act": 0, "watch": 0, "info": 0, "acked": n_acked}
     for m in ms:
         totals[m["tier"]] += 1
     return {"items": items, "sources": src, "totals": totals, "health": health(con, cfg),
             "read_only": bool(cfg["serve"].get("read_only")), "version": __version__,
+            "nvd_notice": sources.NVD_NOTICE if cfg["nvd"].get("enabled") else None,
             "cves": con.execute("SELECT count(*) FROM cve").fetchone()[0],
             "epss_date": (con.execute("SELECT max(date) FROM epss").fetchone() or [None])[0]}
 

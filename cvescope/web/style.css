@@ -108,6 +108,11 @@ button { font: inherit; color: inherit; }
 .badge.info { color: var(--info); background: var(--info-bg); }
 .err { color: var(--act); font-size: 12px; }
 .inv .hint { grid-column: 1 / span 2; font-size: 11px; color: var(--muted); line-height: 1.3; }
+.inv .eol { grid-column: 1 / span 2; font-size: 11px; line-height: 1.3; color: var(--muted); text-decoration: none; justify-self: start; }
+.inv .eol.past { color: var(--watch); font-weight: 600; }
+.inv .eol:hover { text-decoration: underline; }
+.feeds .notice { margin: 8px 8px 0; font-size: 11px; line-height: 1.35; }
+.credits { font-size: 11px; margin-top: 18px; line-height: 1.5; }
 .badge { min-width: 20px; text-align: center; padding: 1px 6px; border-radius: 4px; font: 600 11px var(--mono); }
 .badge.act { color: var(--act); background: var(--act-bg); }
 .badge.watch { color: var(--watch); background: var(--watch-bg); }

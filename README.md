@@ -165,10 +165,25 @@ When a fix ships for something you run (a finding goes from **not yet** or **not
 A CVE record can name its fix before the release ships: OpenSSL's records said "fixed in
 3.5.10" while 3.5.9 was still the newest 3.5 release. cvescope checks the release a record (or
 VuXML) names against [endoflife.date](https://endoflife.date/)'s newest release on that line.
-Until it's out, the finding reads "fixed in 3.5.10 (not released yet: the newest 3.5 release
-is 3.5.9)" and counts as **not yet**; when it ships, it turns **available** and that's a "fix
-available" change. This covers the products endoflife.date lists with a CPE name (OpenSSL,
-OPNsense, the Linux kernel, nginx, PHP, ...); for the rest, a named fix counts as out.
+Until it's out, the finding reads "fixed in 3.5.10 (not released yet per endoflife.date: the
+newest 3.5 release is 3.5.9)" and counts as **not yet**; when it ships, it turns **available**
+and that's a "fix available" change. This covers the products endoflife.date lists with a CPE
+name (OpenSSL, OPNsense, the Linux kernel, nginx, PHP, ...); for the rest, a named fix counts
+as out.
+
+### End of life
+
+A release line past end of life gets no more fixes, so a clean CVE list for it doesn't mean
+much: the next bug stays open. The same endoflife.date data says when each line stops getting
+fixes, and an item on one that has (or will within 90 days) says so under its name on the page,
+linked to the product's endoflife.date page, and in a report's **End of life** section:
+
+- "OpenSSL 3.0 reached end of life on 2026-09-07: no more fixes; Premium support is still offered"
+- "OPNsense 26.1 reaches end of life on 2027-01-31 (in 74 days)"
+
+Distro and vendor builds are left out (Debian's or Ubuntu's packages, a Proxmox kernel): the
+distro keeps patching its build after upstream stops, so upstream's date doesn't apply to it.
+Items whose version isn't on a line endoflife.date lists aren't judged.
 
 ### FreeBSD and OPNsense packages
 
@@ -376,7 +391,10 @@ live in `cvescope/collectors/packages.py`; add your own per item with `aliases =
 | [FreeBSD VuXML](https://vuxml.freebsd.org/) | affected package builds and base-system patch levels, as `pkg audit` uses them | ~1.4 MB, only if you run OPNsense or FreeBSD |
 | [OSV.dev](https://osv.dev/) | advisories for Home Assistant Core and every SBOM language package (PyPI, npm, Maven, Go, ...) with the affected releases | one batch query per sync plus new or changed advisories, only if you have those |
 | [Proxmox VE advisories](https://forum.proxmox.com/threads/proxmox-virtual-environment-security-advisories.149331/) | fixed package builds per Proxmox security advisory (PSA) | the whole forum thread once (~6 pages), then its last page, only if you run Proxmox VE |
-| [endoflife.date](https://endoflife.date/) | the newest release of each release line, so a fix a CVE record names before it ships reads as not out yet | ~320 KB gzipped, only when it changes |
+| [endoflife.date](https://endoflife.date/) | the newest release and end-of-life date of each release line: a fix a CVE record names before it ships reads as not out yet, and items on a line past end of life say so | ~320 KB gzipped, only when it changes |
+
+The page's **Data sources** list links each feed, and the CVE detail and every report say which
+sources the data came from.
 
 ### Optional: NVD lookup
 
@@ -397,6 +415,9 @@ It's off by default because each lookup tells NIST a CVE ID you care about. With
 allows 5 requests per 30 seconds, so a run with 40 lookups takes about 4 minutes. Answers are
 cached: one with no ranges yet is asked again after 7 days, the rest after 60. If a key gets
 rejected, that run falls back to keyless.
+
+This product uses the NVD API but is not endorsed or certified by the NVD. (With the lookup on,
+the page's data sources list and every report carry this notice, as NVD's terms ask.)
 
 ## A word on GitHub PoCs
 
@@ -462,9 +483,10 @@ removal is kept in the CVE's history. "Show acknowledged" on the page lists the 
 
 A report puts it all in one place for someone else, or for later: the counts, the findings
 that need doing (with why they rank where they do, what fixes them, and whether that fix is
-out yet), every host, what
-changed in the last days, what's acknowledged with its note and end date, and the blind spots
-(items without a version, failed collectors, feeds with errors).
+out yet), anything past or near end of life, every host, what
+changed in the last days, what's acknowledged with its note and end date, the blind spots
+(items without a version, failed collectors, feeds with errors), and the sources the data came
+from.
 
 ```
 cvescope report --format html --out ~/reports/cvescope-%Y-%m-%d.html

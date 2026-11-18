@@ -112,11 +112,16 @@ def build(con, cfg, tiers=("act", "watch"), host: str | None = None, days: int =
              for it in items if it.get("error") or not it.get("version")]
     health = summ.get("health") or {}
     feeds = [{"name": s["name"], "error": s["last_error"]} for s in summ["sources"] if s.get("last_error")]
+    ends = sorted(({"item": it["name"], "host": it["host"], "version": it.get("version"), **it["eol"]}
+                   for it in items if it.get("eol")),
+                  key=lambda x: (x["state"] != "eol", x["host"].lower(), x["item"].lower()))
+    credits = [{"label": s["label"], "url": s["url"]} for s in summ["sources"] if s.get("last_ok") and s.get("url")]
     now = dt.datetime.now().astimezone()
     return {"generated": now.isoformat(timespec="minutes"), "version": __version__,
             "scope": {"host": host or None, "tiers": tiers, "days": days, "keyword": include_keyword},
             "counts": counts, "fixes": fixes, "hosts": hosts, "findings": findings, "acknowledged": acked,
-            "changes": changes, "blind_spots": blind, "feed_errors": feeds,
+            "changes": changes, "blind_spots": blind, "feed_errors": feeds, "end_of_life": ends,
+            "credits": credits, "nvd_notice": summ.get("nvd_notice"),
             "health": {"last_sync": health.get("finished"), "problems": health.get("problems") or []},
             "totals": {"items": len(items), "cves_known": summ.get("cves")}}
 
@@ -204,7 +209,14 @@ def render_md(d: dict) -> str:
                        f"| {_md(f['detail'])} | {FIX_LABEL[f['fix']]} "
                        f"| {f['cvss'] if f['cvss'] is not None else ''} | {_pct(f['epss_pct'])} |")
         out.append("")
-    out += ["## Hosts", "", "| Host | Items | Act now | Watch | Info | Acknowledged | Ruled out |",
+    out += [f"## End of life ({len(d['end_of_life'])})", ""]
+    if d["end_of_life"]:
+        out += ["| Host | Item | Version | What | Source |", "|---|---|---|---|---|"]
+        out += [f"| {_md(x['host'])} | {_md(x['item'])} | {_md(x['version'] or '')} | {_md(x['text'])} "
+                f"| [endoflife.date]({x['link']}) |" for x in d["end_of_life"]]
+    else:
+        out.append("Nothing you run is past or near end of life (where endoflife.date knows the release line).")
+    out += ["", "## Hosts", "", "| Host | Items | Act now | Watch | Info | Acknowledged | Ruled out |",
             "|---|---|---|---|---|---|---|"]
     out += [f"| {_md(h['host'])} | {h['items']} | {h['act']} | {h['watch']} | {h['info']} | {h['acked']} | {h['ruled_out']} |"
             for h in d["hosts"]]
@@ -221,6 +233,10 @@ def render_md(d: dict) -> str:
     gaps = [f"- {_md(b['item'])} ({_md(b['host'])}): {_md(b['why'])}" for b in d["blind_spots"]]
     gaps += [f"- feed {_md(f['name'])}: {_md(f['error'])}" for f in d["feed_errors"]]
     out += gaps or ["None: every item has a version and every feed is current."]
+    if d["credits"]:
+        out += ["", "---", "", "Data: " + ", ".join(f"[{_md(c['label'])}]({c['url']})" for c in d["credits"]) + "."]
+    if d["nvd_notice"]:
+        out += ["", _md(d["nvd_notice"])]
     return "\n".join(out) + "\n"
 
 
@@ -237,7 +253,7 @@ main{max-width:1100px;margin:0 auto;padding:24px 20px 48px} h1{font-size:22px;ma
 table{border-collapse:collapse;width:100%;margin:6px 0} th,td{text-align:left;vertical-align:top;padding:5px 8px;border-bottom:1px solid var(--line)}
 th{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)} td.id{font-family:ui-monospace,Consolas,monospace;white-space:nowrap}
 td.num{text-align:right;white-space:nowrap} .why{color:var(--muted);font-size:12px}
-td.fix{white-space:nowrap;font-size:12px;color:var(--muted)} td.fix.available{color:var(--ok);font-weight:600} .tier-act td.id a{color:var(--act)} .tier-watch td.id a{color:var(--watch)}
+td.eol.past{color:var(--watch);font-weight:600} td.fix{white-space:nowrap;font-size:12px;color:var(--muted)} td.fix.available{color:var(--ok);font-weight:600} .tier-act td.id a{color:var(--act)} .tier-watch td.id a{color:var(--watch)}
 ul{padding-left:18px} li{margin:2px 0} footer{margin-top:32px;font-size:11px;color:var(--muted)}
 """
 
@@ -277,6 +293,17 @@ def render_html(d: dict) -> str:
                 f"<td class=\"fix {e(f['fix'])}\">{e(FIX_LABEL[f['fix']])}</td>"
                 f"<td class=\"num\">{e(f['cvss'] if f['cvss'] is not None else '')}</td><td class=\"num\">{e(_pct(f['epss_pct']))}</td></tr>")
         parts.append("</table></section>")
+    parts.append(f"<section><h2>End of life ({len(d['end_of_life'])})</h2>")
+    if d["end_of_life"]:
+        parts.append("<table><tr><th>Host</th><th>Item</th><th>Version</th><th>What</th><th>Source</th></tr>")
+        parts += [f"<tr><td>{e(x['host'])}</td><td>{e(x['item'])}</td><td>{e(x['version'] or '')}</td>"
+                  f"<td class=\"eol {'past' if x['state'] == 'eol' else 'soon'}\">{e(x['text'])}</td>"
+                  f"<td><a href=\"{e(x['link'])}\">endoflife.date</a></td></tr>" for x in d["end_of_life"]]
+        parts.append("</table>")
+    else:
+        parts.append("<p class=\"muted\">Nothing you run is past or near end of life "
+                     "(where endoflife.date knows the release line).</p>")
+    parts.append("</section>")
     parts.append("<section><h2>Hosts</h2><table><tr><th>Host</th><th>Items</th><th>Act now</th><th>Watch</th>"
                  "<th>Info</th><th>Acknowledged</th><th>Ruled out</th></tr>")
     parts += [f"<tr><td>{e(h['host'])}</td>" + "".join(f"<td class=\"num\">{h[k]}</td>" for k in
@@ -301,8 +328,11 @@ def render_html(d: dict) -> str:
     gaps += [f"<li>feed {e(f['name'])}: {e(f['error'])}</li>" for f in d["feed_errors"]]
     parts.append("<ul>" + "".join(gaps) + "</ul>" if gaps else
                  "<p class=\"muted\">None: every item has a version and every feed is current.</p>")
+    credits = ", ".join(f"<a href=\"{e(c['url'])}\">{e(c['label'])}</a>" for c in d["credits"])
     parts.append("</section><footer>cvescope only knows what its inventory lists; anything not in it isn't in this report. "
-                 "https://github.com/magikh0e/cvescope</footer></main></body></html>")
+                 "https://github.com/magikh0e/cvescope"
+                 + (f"<br>Data: {credits}." if credits else "")
+                 + (f"<br>{e(d['nvd_notice'])}" if d["nvd_notice"] else "") + "</footer></main></body></html>")
     return "".join(parts)
 
 

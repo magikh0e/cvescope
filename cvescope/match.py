@@ -634,7 +634,7 @@ def _apply_unreleased(items: list[dict], rows: dict, lines: dict) -> None:
         fixed = _PORT_REV.sub("", m.group(1)) if how == "vuxml" else m.group(1)
         u = unreleased(fixed, ls)
         if u:
-            note = f" (not released yet: the newest {u[0]} release is {u[1]})"
+            note = f" (not released yet per endoflife.date: the newest {u[0]} release is {u[1]})"
             rows[k] = (status, how, reason[:m.end()] + note + reason[m.end():])
 
 

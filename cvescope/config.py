@@ -31,7 +31,7 @@ DEFAULTS = {
         "freebsd": True,
         "osv": True,
         "proxmox": True,
-        # endoflife.date's newest releases, so a fix a CVE record names before it ships reads as not out yet
+        # endoflife.date's release lines: a fix named before it ships reads as not out yet; end-of-life flags
         "endoflife": True,
     },
     "notify": {

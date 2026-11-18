@@ -79,11 +79,18 @@ async function loadSummary() {
   const hosts = [...new Set(s.items.map((it) => it.host))].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
   $("#fHost").replaceChildren(h("option", { value: "", text: "all hosts" }), ...hosts.map((x) => h("option", { value: x, text: x })));
   $("#fHost").value = state.host || "";
+  state.credits = Object.fromEntries(s.sources.map((x) => [x.name, x]));
   const f = $("#feeds");
-  f.replaceChildren(h("h3", { text: "Feeds" }), ...s.sources.map((x) =>
-    h("div", { title: x.last_error || "" }, h("span", { text: x.name }),
-      h("span", { class: x.last_error ? "err" : "muted", text: x.last_error ? "error" : day(x.last_ok) }))),
-    h("div", {}, h("span", { class: "muted", text: `${s.cves.toLocaleString()} CVEs` }), h("span", { class: "muted", text: s.epss_date ? "EPSS " + s.epss_date : "" })));
+  const feedName = (x) => {
+    const a = x.url ? link(x.url, x.label || x.name) : h("span", { text: x.label || x.name });
+    a.title = [x.what, x.last_error].filter(Boolean).join(" · ");
+    return a;
+  };
+  f.replaceChildren(h("h3", { text: "Data sources" }), ...s.sources.map((x) =>
+    h("div", {}, feedName(x),
+      h("span", { class: x.last_error ? "err" : "muted", title: x.last_error || "", text: x.last_error ? "error" : day(x.last_ok) }))),
+    h("div", {}, h("span", { class: "muted", text: `${s.cves.toLocaleString()} CVEs` }), h("span", { class: "muted", text: s.epss_date ? "EPSS " + s.epss_date : "" })),
+    s.nvd_notice ? h("p", { class: "notice muted", text: s.nvd_notice }) : null);
 }
 
 const byName = (a, b) => a.localeCompare(b, undefined, { sensitivity: "base", numeric: true });
@@ -104,9 +111,19 @@ function itemRow(it) {
     h("span", { class: "name", text: it.name }), riskBadges(it.counts, `${it.ruled_out} CVEs ruled out by version`),
     h("span", { class: "ver", text: it.version || "version unknown" }),
     it.error ? h("span", { class: "err", text: "collector failed: last known version" }) : null,
-    !it.error && hint ? h("span", { class: "hint", text: hint }) : null);
+    !it.error && hint ? h("span", { class: "hint", text: hint }) : null,
+    it.eol ? eolTag(it.eol) : null);
   if (state.item === it.id) li.classList.add("on");
   return li;
+}
+
+// "end of life" under an item: the release line it runs gets no more fixes (data: endoflife.date)
+function eolTag(e) {
+  const a = link(e.link, e.state === "eol" ? `end of life${e.date ? " since " + e.date : ""}` : `end of life on ${e.date}`);
+  a.className = `eol ${e.state === "eol" ? "past" : "soon"}`;
+  a.title = `${e.text}. Data: endoflife.date`;
+  a.addEventListener("click", (ev) => ev.stopPropagation());
+  return a;
 }
 
 function renderInventory() {
@@ -351,6 +368,7 @@ function renderMatches() {
   if (text && state.rows.length) { list.replaceChildren(empty(`Nothing here matches “${text}”.`)); return; }
   const info = $("#fInfo").checked;
   list.replaceChildren(empty(it ? `Nothing ${info ? "" : "exploited or likely "}matches ${it.name} ${it.version || ""}. ${it.ruled_out} CVEs were ruled out by version.`
+    + (it.eol ? ` But ${it.eol.text} (endoflife.date), so the next bug may not get one.` : "")
     : state.host ? `Nothing ${info ? "" : "exploited or likely "}matches anything on ${state.host}.${info ? "" : " Tick “include info” to see the rest."}`
       : "No exploited or likely CVEs match your inventory right now. Tick “include info” to see the rest."
         + (state.acked && !$("#fAcked").checked ? ` ${state.acked} acknowledged ${state.acked === 1 ? "one is" : "ones are"} hidden.` : "")));
@@ -549,11 +567,27 @@ async function openCve(id, keepScroll) {
     : [h("li", { class: "muted", text: `No CVE ID: this is ${d.assigner || "the vendor"}'s advisory, listed under its own ID.` })];
   parts.push(h("h3", { text: "References" }), h("ul", { class: "ev" }, ...own,
     ...(d.refs || []).map((u) => h("li", {}, link(u)))));
+  parts.push(credits(d));
   body.replaceChildren(...parts.filter(Boolean));
   const top = $("#detail").scrollTop;
   $("#detail").hidden = false;
   document.querySelector(".layout").classList.add("with-detail");
   $("#detail").scrollTop = keepScroll ? top : 0;
+}
+
+// the sources behind what the detail pane shows, linked (labels and links come from the server)
+function credits(d) {
+  const c = state.credits || {};
+  const s = d.signals || {};
+  const names = [d.id.startsWith("CVE-") ? "cvelist" : d.id.startsWith("PSA-") ? "proxmox" : "osv"];
+  if (d.epss) names.push("epss");
+  for (const [sig, feed] of [["kev", "kev"], ["msf", "metasploit"], ["nuclei", "nuclei"], ["edb", "exploitdb"], ["poc", "github_poc"]]) {
+    if (s[sig]) names.push(feed);
+  }
+  const items = names.filter((n) => c[n] && c[n].url).map((n) => link(c[n].url, c[n].label));
+  if (d.ssvc_exploitation) items.splice(1, 0, link("https://github.com/cisagov/vulnrichment", "CISA Vulnrichment (SSVC)"));
+  if (!items.length) return null;
+  return h("p", { class: "credits muted" }, "Data: ", ...items.flatMap((a, i) => (i ? [", ", a] : [a])), ".");
 }
 
 // ---------- acknowledgements ----------

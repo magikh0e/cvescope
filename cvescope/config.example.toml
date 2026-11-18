@@ -27,8 +27,8 @@ distro = true           # Debian/Ubuntu trackers, only for releases your invento
 freebsd = true          # FreeBSD VuXML for OPNsense packages and FreeBSD base releases
 osv = true              # OSV.dev advisories for Home Assistant Core (PyPI homeassistant)
 proxmox = true          # Proxmox VE's security advisories (PSAs) from its forum thread
-endoflife = true        # endoflife.date's newest release per release line: tells a fix a CVE
-                        # record announces ("fixed in 3.5.10") from one that's out (~320 KB)
+endoflife = true        # endoflife.date's release lines: tells a fix a CVE record announces
+                        # ("fixed in 3.5.10") from one that's out, and flags items past end of life
 
 # Your own exploit/advisory folders: any file that mentions a CVE gets linked to it.
 # [[sources.local_archive]]

@@ -63,12 +63,16 @@ CREATE TABLE IF NOT EXISTS osv_pkg(
 CREATE TABLE IF NOT EXISTS psa(
   id TEXT PRIMARY KEY, rev INTEGER, date TEXT, title TEXT, cves TEXT, fixed TEXT, url TEXT, details TEXT) WITHOUT ROWID;
 
--- endoflife.date: the newest release of each release line ("3.5" -> 3.5.9) per product, and the
+-- endoflife.date: per product, each release line ("3.5") with its newest release (3.5.9), when
+-- it stops getting fixes (eol_from) and when paid or extended support ends (eoes_from), plus the
 -- CPE vendor/product pairs that name each product. Tells a fix a CVE record announces ahead of
--- the release ("fixed in 3.5.10") from one that's out.
+-- the release ("fixed in 3.5.10") from one that's out, and flags lines past end of life.
 CREATE TABLE IF NOT EXISTS eol_cycle(
   product TEXT, cycle TEXT, latest TEXT, latest_date TEXT,
+  eol_from TEXT, is_eol INTEGER, eoes_from TEXT, is_eoes INTEGER,
   PRIMARY KEY(product, cycle)) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS eol_product(
+  name TEXT PRIMARY KEY, label TEXT, eoes_label TEXT, link TEXT) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS eol_cpe(
   vendor TEXT, cpe_product TEXT, product TEXT,
   PRIMARY KEY(vendor, cpe_product, product)) WITHOUT ROWID;
@@ -129,6 +133,10 @@ def _migrate(con) -> None:
         con.execute("ALTER TABLE distro_fix ADD COLUMN note TEXT")
     if "src" not in cols:
         con.execute("ALTER TABLE distro_fix ADD COLUMN src TEXT")
+    eol_cols = {r[1] for r in con.execute("PRAGMA table_info(eol_cycle)")}
+    for c, t in (("eol_from", "TEXT"), ("is_eol", "INTEGER"), ("eoes_from", "TEXT"), ("is_eoes", "INTEGER")):
+        if c not in eol_cols:
+            con.execute(f"ALTER TABLE eol_cycle ADD COLUMN {c} {t}")
     if "details" not in {r[1] for r in con.execute("PRAGMA table_info(psa)")}:
         con.execute("ALTER TABLE psa ADD COLUMN details TEXT")
 

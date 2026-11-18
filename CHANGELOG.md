@@ -5,6 +5,22 @@ releases are on the [releases page](https://github.com/magikh0e/cvescope/release
 
 ## [Unreleased]
 
+### Added
+- End of life: an item on a release line that no longer gets fixes (or won't in 90 days) says so
+  under its name on the page, linked to endoflife.date, and in a report's new **End of life**
+  section: "OpenSSL 3.0 reached end of life on 2026-09-07: no more fixes; Premium support is
+  still offered". Distro and vendor builds (Debian and Ubuntu packages, a Proxmox kernel) are
+  left out, since the distro keeps patching them. Uses the endoflife.date feed 0.2.9 added; the
+  first sync after upgrading downloads it in full once.
+- Credit where the data comes from: the page's feed list is now **Data sources**, each one
+  named and linked (CISA KEV, FIRST EPSS, the CVE Program, Debian's tracker, ...); a CVE's
+  detail ends with the sources behind it; reports end with a "Data:" line. With the NVD lookup
+  on, the page and reports show the notice NVD's terms of use ask for.
+
+### Changed
+- An unreleased fix credits its source: "fixed in 3.5.10 (not released yet per endoflife.date:
+  the newest 3.5 release is 3.5.9)".
+
 ## [0.2.9] - 2026-11-18
 
 ### Fixed
