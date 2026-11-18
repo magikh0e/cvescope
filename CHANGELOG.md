@@ -5,6 +5,8 @@ releases are on the [releases page](https://github.com/magikh0e/cvescope/release
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-11-17
+
 ### Added
 - SBOM import: the new `sbom` collector reads CycloneDX (JSON or XML) and SPDX (JSON or
   tag-value) files from syft, trivy, cdxgen or a build. Each component becomes an item: language
@@ -164,7 +166,8 @@ First release.
 - Act now / watch / info tiers, change events, and ntfy, Home Assistant and webhook alerts.
 - A local web page (127.0.0.1, Host header checked) and a CLI.
 
-[Unreleased]: https://github.com/magikh0e/cvescope/compare/v0.2.5...HEAD
+[Unreleased]: https://github.com/magikh0e/cvescope/compare/v0.2.6...HEAD
+[0.2.6]: https://github.com/magikh0e/cvescope/compare/v0.2.5...v0.2.6
 [0.2.5]: https://github.com/magikh0e/cvescope/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/magikh0e/cvescope/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/magikh0e/cvescope/compare/v0.2.2...v0.2.3
