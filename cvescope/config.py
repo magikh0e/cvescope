@@ -28,6 +28,7 @@ DEFAULTS = {
         "distro_releases": [],
         "freebsd": True,
         "osv": True,
+        "proxmox": True,
     },
     "notify": {
         "min_tier": "act",

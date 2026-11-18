@@ -46,6 +46,12 @@ releases are on the [releases page](https://github.com/magikh0e/cvescope/release
 - The `homeassistant` collector reads Home Assistant's update entities, so Home Assistant OS,
   the Supervisor, add-ons and ESPHome device firmware show up with any long-lived token. Before,
   OS and add-ons needed an admin token.
+- Proxmox VE hosts are checked against Proxmox's own security advisories (PSAs), read from its
+  forum thread (the whole thread once, then its last page). Every CVE a PSA names is affected
+  when the host's build is older than the fix for its release line, not_affected otherwise;
+  kernels compare against the running kernel and say "reboot to run it" when the fixed one is
+  already installed. The `proxmox` collector now always reads the host's package builds and
+  running kernel (PVEAuditor is enough). New source `proxmox`.
 
 ### Changed
 - A version field that names another distro's releases ("Fedora version prior to 31", "all

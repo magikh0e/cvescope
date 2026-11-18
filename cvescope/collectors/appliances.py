@@ -28,7 +28,9 @@ PVE_PACKAGES = {
 
 def proxmox(e: dict) -> list[dict]:
     """url, token_file (user@realm!id=secret; PVEAuditor is enough), pin_sha256.
-    packages = true also adds QEMU, LXC and the running kernel."""
+    packages = true also adds QEMU, LXC and the running kernel as items of their own. The host's
+    Proxmox package builds and running kernel are always read (apt/versions), so Proxmox's own
+    advisories (PSAs) can be checked against them."""
     c = _client(e)
     tok = secret(e, "token")
     if " " in tok:  # "host user@realm!id=secret" lines, one per host
@@ -39,25 +41,47 @@ def proxmox(e: dict) -> list[dict]:
     v = c.get("/api2/json/version", h)["data"]
     nodes = [n["node"] for n in c.get("/api2/json/nodes", h)["data"]]
     label = e.get("name") or f"Proxmox VE ({', '.join(nodes) or c.host})"
-    out = [item(label, "proxmox", "virtual environment", v["version"],
-                aliases=["proxmox:proxmox virtual environment", "proxmox:proxmox ve", "proxmox:pve manager",
-                         "proxmox:pve*", "proxmox:proxmox ve*"],
-                keywords=["Proxmox VE", "Proxmox Virtual Environment"], host=c.host)]
-    if e.get("guests", True):
-        out += _pve_guests(c, h)
+    apt = []
+    if nodes:
+        try:
+            apt = c.get(f"/api2/json/nodes/{nodes[0]}/apt/versions", h)["data"] or []
+        except net.HTTPStatus:
+            apt = []
+    pkgs = {p["Package"]: p["Version"] for p in apt if p.get("Package") and p.get("Version")}
+    running = next((p["RunningKernel"] for p in apt if p.get("RunningKernel")), None)
+    kernels = {}  # proxmox-kernel-7.0 (the meta package) -> newest 7.0 build installed
+    for name, ver in pkgs.items():
+        m = re.fullmatch(r"proxmox-kernel-(\d+\.\d+)", name)
+        if m:
+            kernels[m.group(1)] = ver
+    own, split = [], []
+    m = re.match(r"(\d+)", str(v.get("version") or ""))
+    line = {"pve_major": int(m.group(1))} if m else {}  # 9.2.28 -> 9: which fixes in a PSA apply
     if e.get("packages") and nodes:
-        apt = c.get(f"/api2/json/nodes/{nodes[0]}/apt/versions", h)["data"]
         for p in apt:
             name = p.get("Package")
             if p.get("RunningKernel"):
                 kv = p["RunningKernel"].split("-")[0]
-                out.append(item(f"Linux kernel ({nodes[0]})", "linux", "linux kernel", kv,
-                                aliases=["linux:linux"], backports=True, running=p["RunningKernel"]))
+                own.append(item(f"Linux kernel ({nodes[0]})", "linux", "linux kernel", kv,
+                                aliases=["linux:linux"], backports=True, running=p["RunningKernel"],
+                                pve_pkg="kernel", kernel_installed=kernels, **line))
+                split.append("kernel")
             if name in PVE_PACKAGES:
                 disp, al = PVE_PACKAGES[name]
-                out.append(item(f"{disp} ({nodes[0]})", version=packages.pkg_version(p["Version"]),
-                                aliases=al, backports=True, package=name))
-    return out
+                own.append(item(f"{disp} ({nodes[0]})", version=packages.pkg_version(p["Version"]),
+                                aliases=al, backports=True, package=name, pve_pkg=name,
+                                package_version=p["Version"], **line))
+                split.append(name)
+    host = {"host": c.host}
+    if pkgs:  # what the PSA check needs; packages with their own item are checked there
+        host.update(pve_packages=pkgs, running_kernel=running, pve_split=split, **line)
+    out = [item(label, "proxmox", "virtual environment", v["version"],
+                aliases=["proxmox:proxmox virtual environment", "proxmox:proxmox ve", "proxmox:pve manager",
+                         "proxmox:pve*", "proxmox:proxmox ve*"],
+                keywords=["Proxmox VE", "Proxmox Virtual Environment"], **host)]
+    if e.get("guests", True):
+        out += _pve_guests(c, h)
+    return out + own
 
 
 def _guest_os(info: dict, label: str) -> list[dict]:

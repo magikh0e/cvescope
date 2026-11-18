@@ -6,7 +6,7 @@ import time
 import traceback
 
 from .. import db
-from . import cvelist, distro, epss, exploits, freebsd, kev, osvpkg
+from . import cvelist, distro, epss, exploits, freebsd, kev, osvpkg, proxmox_psa
 
 SOURCES = {
     "cvelist": cvelist.sync,
@@ -20,6 +20,7 @@ SOURCES = {
     "distro": distro.sync,
     "freebsd": freebsd.sync,
     "osv": osvpkg.sync,
+    "proxmox": proxmox_psa.sync,
 }
 
 

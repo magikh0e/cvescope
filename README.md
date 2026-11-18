@@ -84,7 +84,7 @@ Each `[[inventory]]` block in the config is one collector:
 | `osquery` | installed programs, apps and packages, live through `osqueryi` (local or ssh) or from saved results | osquery, or the JSON file(s) |
 | `wpscan` | WordPress core, theme and plugin versions from a WPScan report | the JSON file(s) |
 | `whatweb` | web stack versions (server, PHP, CMS, JS libraries) from WhatWeb | the JSON file(s) |
-| `proxmox` | PVE version, every VM/container (OS via the guest agent), optionally QEMU, LXC, kernel | API token, PVEAuditor role |
+| `proxmox` | PVE version, every VM/container (OS via the guest agent), optionally QEMU, LXC, kernel; package builds and the running kernel checked against Proxmox's own advisories | API token, PVEAuditor role |
 | `opnsense` | OPNsense, its FreeBSD base and OpenSSL, plus OpenSSH, Unbound, dnsmasq, Suricata and other packages (or all of them), checked against FreeBSD's VuXML | API key/secret |
 | `unifi` | UniFi Network version and every adopted device's firmware | Control Plane API key |
 | `pihole` | Pi-hole v6 core, FTL and web versions | app password |
@@ -160,6 +160,28 @@ advisory covers.
 The OS, Supervisor, add-on and ESPHome device versions come from Home Assistant's update
 entities, which any long-lived token can read (the Supervisor API needs an admin token). Those
 match against the CVE List as usual; Home Assistant OS has no advisory feed of its own.
+
+### Proxmox VE
+
+Proxmox publishes its security advisories (PSAs) as posts in one
+[forum thread](https://forum.proxmox.com/threads/proxmox-virtual-environment-security-advisories.149331/),
+each naming the fixed package builds. cvescope reads the whole thread once and then only its
+last page on each sync. The `proxmox` collector always reads the host's Proxmox package builds
+and the running kernel (the API's package-version list, which the PVEAuditor role can see), and
+every CVE a PSA names gets an answer for that host:
+
+- the installed build is older than the fix for its release line: **affected** ("fixed in
+  pve-manager 8.2.7, installed 8.2.5"). Fixes tagged for another release line are set aside,
+  since Proxmox sometimes changes a package's version scheme between releases.
+- otherwise **not_affected**. A host on a newer release than every line the PSA fixes isn't
+  affected.
+- kernels compare per series against the **running** kernel, so a fixed kernel that's installed
+  but not booted yet still counts as affected, with "reboot to run it".
+
+Most PSAs name no CVE (Proxmox finds many issues itself), so only the CVE-carrying ones show up
+here for now. Debian's own packages on a Proxmox host (OpenSSH, OpenSSL, glibc ...) aren't in
+the API's list; add a `dpkg` collector over ssh for the host to check them against the Debian
+tracker.
 
 ### Containers, endpoints and websites
 
@@ -267,6 +289,7 @@ live in `cvescope/collectors/packages.py`; add your own per item with `aliases =
 | [Ubuntu OVAL](https://security-metadata.canonical.com/oval/) | fixed package version per Ubuntu release | ~2 MB per release you run |
 | [FreeBSD VuXML](https://vuxml.freebsd.org/) | affected package builds and base-system patch levels, as `pkg audit` uses them | ~1.4 MB, only if you run OPNsense or FreeBSD |
 | [OSV.dev](https://osv.dev/) | Home Assistant Core's security advisories (PyPI `homeassistant`) with every affected release | one small query per sync, only if you run Home Assistant |
+| [Proxmox VE advisories](https://forum.proxmox.com/threads/proxmox-virtual-environment-security-advisories.149331/) | fixed package builds per Proxmox security advisory (PSA) | the whole forum thread once (~6 pages), then its last page, only if you run Proxmox VE |
 
 ### Optional: NVD lookup
 

@@ -11,6 +11,7 @@ Statuses:
 from __future__ import annotations
 
 import datetime as dt
+import functools
 import json
 import re
 
@@ -383,6 +384,131 @@ def _apply_osv(con, it: dict, rows: dict) -> None:
             rows[(cve, it["id"])] = ("not_affected", "osv", f"{label} {oid}: {why}, installed {ver}")
 
 
+_PVE_KERNEL = re.compile(r"^(\d+\.\d+)\.(\d+)-(\d+)")
+
+
+def _pve_kernel(release: str | None) -> tuple[str, str] | None:
+    """'7.0.14-28-pve' -> ('kernel:7.0', '7.0.14-28'): the series key PSAs use, and the build."""
+    m = _PVE_KERNEL.match(release or "")
+    return (f"kernel:{m.group(1)}", f"{m.group(1)}.{m.group(2)}-{m.group(3)}") if m else None
+
+
+def _major(v: str) -> int | None:
+    m = re.match(r"(\d+)", v.split(":", 1)[-1])
+    return int(m.group(1)) if m else None
+
+
+def _psa_fix(inst: str, fixes: list[tuple[str, int | None]], line: int | None = None,
+             newer_ok: bool = True) -> tuple[str, bool] | None:
+    """(the fix that applies to an installed build, is the build older than it?), or None.
+
+    fixes are (version, Proxmox VE release line or None). An advisory can list one fix per
+    line (pve-manager 8.2.7 for PVE 8, 7.4-19 for PVE 7), and a package's version scheme can
+    change between lines, so fixes tagged for another line are set aside first. If none are
+    left and the whole advisory only fixes older lines (newer_ok), the host's line came out
+    after it and isn't affected; if the advisory does fix the host's line, just under another
+    package name, it can't be told. Among the rest, the fix with the installed build's own
+    major version decides.
+    """
+    key = functools.cmp_to_key(dpkg_cmp)
+    if line is not None:
+        ours = [v for v, ln in fixes if ln in (None, line)]
+        if not ours:
+            older = [v for v, ln in fixes if ln is not None and ln < line]
+            ok = newer_ok and older and len(older) == len(fixes)
+            return (max(older, key=key), False) if ok else None
+        fixes = [(v, None) for v in ours]
+    fixes = [v for v, _ in fixes]
+    mine = _major(inst)
+    same = [f for f in fixes if _major(f) == mine]
+    if same:
+        fix = min(same, key=key)
+        return fix, dpkg_cmp(inst, fix) < 0
+    if mine is not None and fixes and all((_major(f) or 0) < mine for f in fixes):
+        return max(fixes, key=key), False
+    return None
+
+
+def _psa_targets(ex: dict) -> tuple[dict[str, str], dict[str, str]]:
+    """(package -> installed build, kernel series -> newest installed build) an item stands for."""
+    # pve_major (the host's release line) comes along separately, see _apply_psa
+    if ex.get("pve_pkg") == "kernel":
+        k = _pve_kernel(ex.get("running"))
+        return ({k[0]: k[1]} if k else {}), ex.get("kernel_installed") or {}
+    if ex.get("pve_pkg"):
+        v = ex.get("package_version")
+        return ({ex["pve_pkg"]: v} if v else {}), {}
+    pkgs = ex.get("pve_packages") or {}
+    split = set(ex.get("pve_split") or [])
+    out = {n: v for n, v in pkgs.items() if n not in split}
+    kernels = {}
+    if pkgs and "kernel" not in split:
+        k = _pve_kernel(ex.get("running_kernel"))
+        if k:
+            out[k[0]] = k[1]
+        for n, v in pkgs.items():
+            m = re.fullmatch(r"proxmox-kernel-(\d+\.\d+)", n)
+            if m:
+                kernels[m.group(1)] = v
+    return out, kernels
+
+
+def _apply_psa(con, it: dict, rows: dict) -> None:
+    """Proxmox hosts: Proxmox's own advisories (PSAs) decide the CVEs they name.
+
+    For an advisory that fixes a package this item stands for (a host's Proxmox packages, or its
+    QEMU / LXC / kernel item): affected when the installed build is older than the fix for its
+    line, not_affected otherwise. Kernels compare per series against the RUNNING kernel, so a
+    fixed kernel that's installed but not booted yet still counts, with a note to reboot.
+    """
+    ex = it.get("extra") or {}
+    targets, kernels = _psa_targets(ex)
+    if not targets:
+        return
+    line = ex.get("pve_major")
+    found: dict[str, tuple] = {}
+    for pid, rev, cves, fixed in con.execute("SELECT id, rev, cves, fixed FROM psa WHERE cves != '[]'"):
+        by_pkg: dict[str, list[tuple]] = {}
+        for f in json.loads(fixed or "[]"):
+            pkg, ver, ln = (list(f) + [None])[:3]
+            by_pkg.setdefault(pkg, []).append((ver, ln))
+        # does this advisory fix anything on the host's own release line (or untagged)?
+        newer_ok = line is not None and all(
+            ln is not None and ln < line
+            for pkg, fx in by_pkg.items() if not pkg.startswith("kernel:") for _, ln in fx)
+        for pkg, inst in targets.items():
+            if pkg not in by_pkg:
+                continue
+            # kernels are matched by series already; release-line tags only matter for packages
+            got = _psa_fix(inst, by_pkg[pkg], None if pkg.startswith("kernel:") else line, newer_ok)
+            if got is None:
+                continue
+            fix, hit = got
+            fix_line = next((ln for v, ln in by_pkg[pkg] if v == fix), None)
+            other_line = fix_line if (line and fix_line and fix_line != line and not pkg.startswith("kernel:")) else None
+            for cve in json.loads(cves or "[]"):
+                prev = found.get(cve)
+                if prev is None or (hit and not prev[0]):
+                    found[cve] = (hit, f"{pid}-{rev}", pkg, fix, inst, other_line)
+    if not found:
+        return
+    ids = list(found)
+    known = {r[0] for r in con.execute(
+        f"SELECT id FROM cve WHERE state='PUBLISHED' AND id IN ({','.join('?' * len(ids))})", ids)}
+    for cve, (hit, psa, pkg, fix, inst, other_line) in found.items():
+        if cve not in known:
+            continue
+        kernel = pkg.startswith("kernel:")
+        name = f"proxmox-kernel-{pkg.split(':', 1)[1]}" if kernel else pkg
+        on = f" for Proxmox VE {other_line}" if other_line else ""  # a fix on an older release line
+        why = f"Proxmox {psa}: fixed in {name} {fix}{on}, {'running' if kernel else 'installed'} {inst}"
+        if hit and kernel:
+            have = kernels.get(pkg.split(":", 1)[1])
+            if have and dpkg_cmp(have, fix) >= 0:
+                why += f"; {have} is already installed: reboot to run it"
+        rows[(cve, it["id"])] = ("affected" if hit else "not_affected", "psa", why)
+
+
 def run(con, cfg) -> str:
     items = []
     for r in con.execute("SELECT * FROM item"):
@@ -413,6 +539,7 @@ def run(con, cfg) -> str:
         _apply_distro(con, it, new_rows)
         _apply_vuxml(con, it, new_rows)
         _apply_osv(con, it, new_rows)
+        _apply_psa(con, it, new_rows)
 
     # keyword pass: only CVEs whose record names no product at all (mostly pre-2023 "n/a")
     kw_items = [(it, re.compile(r"\b(?:" + "|".join(re.escape(k) for k in it["keywords"]) + r")\b", re.I))

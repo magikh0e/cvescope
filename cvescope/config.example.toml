@@ -24,6 +24,7 @@ distro = true           # Debian/Ubuntu trackers, only for releases your invento
 # distro_releases = ["debian:12", "ubuntu:noble"]   # fetch these even if no host reports them
 freebsd = true          # FreeBSD VuXML for OPNsense packages and FreeBSD base releases
 osv = true              # OSV.dev advisories for Home Assistant Core (PyPI homeassistant)
+proxmox = true          # Proxmox VE's security advisories (PSAs) from its forum thread
 
 # Your own exploit/advisory folders: any file that mentions a CVE gets linked to it.
 # [[sources.local_archive]]
@@ -150,7 +151,8 @@ version = "30.0.4"
 # url = "https://192.168.1.10:8006"
 # token_file = "~/.secrets/pve-token"     # user@pve!tokenid=secret
 # pin_sha256 = "AB:CD:..."
-# packages = true                          # also QEMU, LXC, running kernel
+# packages = true                          # QEMU, LXC, the running kernel as items of their own
+#                                          # (package builds are always read for Proxmox's advisories)
 # guests = true                            # every VM/CT; VM OS + kernel via the guest agent
 
 # OPNsense (API key + secret of a user with read access to firmware/diagnostics)

@@ -57,6 +57,12 @@ CREATE TABLE IF NOT EXISTS osv_pkg(
   ecosystem TEXT, package TEXT, cve_id TEXT, osv_id TEXT, versions TEXT, ranges TEXT, fixed TEXT,
   PRIMARY KEY(ecosystem, package, cve_id, osv_id)) WITHOUT ROWID;
 
+-- Proxmox security advisories (PSA posts in Proxmox's forum thread): fixed package builds.
+-- id is the base id (PSA-2026-00080), rev the latest revision seen; fixed is JSON
+-- [[package, version], ...] with kernels as ["kernel:7.0", "7.0.14-25"]
+CREATE TABLE IF NOT EXISTS psa(
+  id TEXT PRIMARY KEY, rev INTEGER, date TEXT, title TEXT, cves TEXT, fixed TEXT, url TEXT) WITHOUT ROWID;
+
 -- optional NVD CPE ranges for CVEs the CVE List can't settle (see sources/nvd.py)
 CREATE TABLE IF NOT EXISTS nvd_cpe(
   cve_id TEXT PRIMARY KEY, fetched TEXT, status TEXT, cpes TEXT) WITHOUT ROWID;
