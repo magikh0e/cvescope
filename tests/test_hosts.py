@@ -1,6 +1,6 @@
 import unittest
 
-from cvescope.query import host_of
+from cvescope.query import host_aliases, host_of, merge_hosts
 
 
 class Hosts(unittest.TestCase):
@@ -22,6 +22,30 @@ class Hosts(unittest.TestCase):
             ("Web server", "static:web01", "web01"),
         ]:
             self.assertEqual(host_of(name, collector), host, (name, collector))
+
+
+class Merge(unittest.TestCase):
+    HOSTS = {"OPNsense", "VM 102 OpnSense", "pihole1", "CT 113 pihole1", "Home Assistant", "VM 103 haos-17.2",
+             "UniFi", "VM 100 UnFi", "CT 101 arr-stack", "PVE1"}
+
+    def test_guest_named_like_a_host_joins_it(self):
+        m = merge_hosts(self.HOSTS)
+        self.assertEqual(m, {"VM 102 OpnSense": "OPNsense", "CT 113 pihole1": "pihole1"})
+
+    def test_aliases_by_name_or_guest_id(self):
+        cfg = {"hosts": {"vm 103 HAOS-17.2": "home assistant", "VM 100": "UniFi", "CT 101": "", "x": None}}
+        aliases = host_aliases(cfg)
+        self.assertEqual(aliases, {"vm 103 haos-17.2": "home assistant", "vm 100": "UniFi"})   # non-text values dropped
+        m = merge_hosts(self.HOSTS, aliases)
+        self.assertEqual(m["VM 103 haos-17.2"], "Home Assistant")   # the existing host's spelling wins
+        self.assertEqual(m["VM 100 UnFi"], "UniFi")
+        self.assertNotIn("CT 101 arr-stack", m)                     # empty alias: left alone
+        self.assertEqual(merge_hosts({"VM 103 haos-18.0", "Home Assistant"}, {"vm 103": "Home Assistant"}),
+                         {"VM 103 haos-18.0": "Home Assistant"})   # survives the VM being renamed
+
+    def test_no_hosts_section(self):
+        self.assertEqual(host_aliases({}), {})
+        self.assertEqual(host_aliases({"hosts": ["not", "a", "table"]}), {})
 
 
 if __name__ == "__main__":

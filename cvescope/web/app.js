@@ -2,7 +2,8 @@
 // cvescope local page. Every string from feeds is untrusted: DOM is built with textContent only.
 
 const $ = (s) => document.querySelector(s);
-const state = { item: null, host: null, current: null, items: [], rows: [], readOnly: false, acked: 0 };
+const state = { item: null, host: null, current: null, items: [], rows: [], shown: [], sel: new Map(), readOnly: false, acked: 0 };
+const selKey = (m) => `${m.cve_id}|${m.item_id}`;
 
 // view choices remembered per browser; storage can be missing (private window), so never rely on it
 const PREFS = ["invGroup", "invSort", "fSort"];
@@ -181,9 +182,12 @@ function matchRow(m) {
   const sig = sigKeys(m.signals);
   const a = m.ack, acked = a && a.state === "active";
   const why = m.why && m.why.length ? TIER[m.tier] + ": " + m.why.join(" · ") : null;
+  const pick = state.readOnly ? null : h("input", { type: "checkbox", class: "pick", "aria-label": `Select ${m.cve_id} on ${m.item_name}`,
+    onclick: (e) => { e.stopPropagation(); toggleSel(m, e.target.checked); } });
+  if (pick) pick.checked = state.sel.has(selKey(m));
   return h("div", { class: `row ${m.tier}${acked ? " acked" : ""}`, "data-cve": m.cve_id, onclick: () => openCve(m.cve_id) },
     h("span", { class: "bar" }),
-    h("span", { class: "id", text: m.cve_id }),
+    h("span", { class: "id" }, pick, m.cve_id),
     h("span", { class: "title", text: m.title || m.description || "" }),
     h("span", { class: "nums" },
       m.cvss != null ? h("span", { title: "CVSS base score", text: "CVSS " + m.cvss }) : null,
@@ -231,6 +235,11 @@ function renderMatches() {
     note.append(`showing ${rows.length} of ${state.rows.length}${scope ? " for " + scope : ""}${text ? ` matching “${text}”` : ""} `,
       h("button", { class: "linkish", type: "button", text: "clear", onclick: clearFilters }));
   }
+  // only what's on screen can stay selected: a filter change never acknowledges hidden rows
+  state.shown = rows;
+  const visible = new Set(rows.map(selKey));
+  for (const k of [...state.sel.keys()]) if (!visible.has(k)) state.sel.delete(k);
+  updateBulk();
   const list = $("#matchList");
   if (rows.length) { list.replaceChildren(...rows.map(matchRow)); return; }
   if (text && state.rows.length) { list.replaceChildren(empty(`Nothing here matches “${text}”.`)); return; }
@@ -239,6 +248,65 @@ function renderMatches() {
     : state.host ? `Nothing ${info ? "" : "exploited or likely "}matches anything on ${state.host}.${info ? "" : " Tick “include info” to see the rest."}`
       : "No exploited or likely CVEs match your inventory right now. Tick “include info” to see the rest."
         + (state.acked && !$("#fAcked").checked ? ` ${state.acked} acknowledged ${state.acked === 1 ? "one is" : "ones are"} hidden.` : "")));
+}
+
+// ---------- acknowledging many at once ----------
+function toggleSel(m, on) {
+  if (on) state.sel.set(selKey(m), m); else state.sel.delete(selKey(m));
+  updateBulk();
+}
+
+function updateBulk() {
+  const bar = $("#bulkBar"), n = state.sel.size, shown = state.shown.length;
+  bar.hidden = state.readOnly || !shown;
+  if (bar.hidden) return;
+  const all = $("#selAll");
+  all.checked = n > 0 && n === shown;
+  all.indeterminate = n > 0 && n < shown;
+  $("#selCount").textContent = n ? `${n} selected` : `select all ${shown} shown`;
+  $("#bulkActions").hidden = !n;
+  const acked = [...state.sel.values()].filter((m) => m.ack).length;
+  $("#bulkAck").textContent = `Acknowledge ${n}`;
+  $("#bulkUnack").hidden = !acked;
+  $("#bulkUnack").textContent = `Remove acknowledgement (${acked})`;
+}
+
+function bulkMessage(text, undo) {
+  const box = $("#bulkMsg");
+  box.className = "bulkmsg";
+  box.replaceChildren(text, undo ? " " : "", undo ? h("button", { class: "linkish", type: "button", text: "undo", onclick: undo }) : "");
+}
+
+async function bulkRun(path, pairs, extra, done) {
+  const box = $("#bulkMsg");
+  for (const b of document.querySelectorAll("#bulkActions button")) b.disabled = true;
+  try {
+    const r = await post(path, { pairs, ...extra });
+    state.sel.clear();
+    await loadSummary();
+    await loadMatches();
+    done(r.count);
+  } catch (e) {
+    box.className = "bulkmsg err";
+    box.textContent = e.message;
+  } finally {
+    for (const b of document.querySelectorAll("#bulkActions button")) b.disabled = false;
+  }
+}
+
+function bulkAck() {
+  const pairs = [...state.sel.values()].map((m) => ({ cve: m.cve_id, item: m.item_id }));
+  const days = $("#bulkDays").value;
+  bulkRun("/api/ack/bulk", pairs, { note: $("#bulkNote").value, days: days ? Number(days) : null }, (n) => {
+    $("#bulkNote").value = "";
+    bulkMessage(`Acknowledged ${n}.${$("#fAcked").checked ? "" : " They're hidden now; “show acknowledged” lists them."}`,
+      () => bulkRun("/api/unack/bulk", pairs, {}, (k) => bulkMessage(`Took back ${k}.`)));
+  });
+}
+
+function bulkUnack() {
+  const pairs = [...state.sel.values()].filter((m) => m.ack).map((m) => ({ cve: m.cve_id, item: m.item_id }));
+  bulkRun("/api/unack/bulk", pairs, {}, (n) => bulkMessage(`Removed ${n} acknowledgement${n === 1 ? "" : "s"}.`));
 }
 
 function clearFilters() {
@@ -429,6 +497,14 @@ $("#invFilter").addEventListener("input", renderInventory);
 for (const k of ["invGroup", "invSort"]) $("#" + k).addEventListener("change", () => { savePref(k); renderInventory(); });
 $("#fHost").addEventListener("change", (e) => { state.host = null; selectHost(e.target.value || null); });
 $("#fText").addEventListener("input", renderMatches);
+$("#selAll").addEventListener("change", (e) => {
+  state.sel.clear();
+  if (e.target.checked) for (const m of state.shown) state.sel.set(selKey(m), m);
+  renderMatches();
+});
+$("#bulkAck").addEventListener("click", bulkAck);
+$("#bulkUnack").addEventListener("click", bulkUnack);
+$("#bulkClear").addEventListener("click", () => { state.sel.clear(); renderMatches(); });
 $("#fSort").addEventListener("change", () => { savePref("fSort"); renderMatches(); });
 $("#closeDetail").addEventListener("click", closeDetail);
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !e.target.closest(".ackform")) closeDetail(); });

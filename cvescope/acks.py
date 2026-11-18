@@ -113,6 +113,63 @@ def add(con, cfg, cve_id: str, item_ref: str | None = None, note: str = "",
     return rows
 
 
+BULK_MAX = 2000  # pairs per bulk call
+
+
+def _pairs(pairs) -> list[tuple[str, str]]:
+    out = list(dict.fromkeys((str(c).strip().upper(), str(i).strip()) for c, i in pairs))
+    if not out:
+        raise ValueError("nothing selected")
+    if len(out) > BULK_MAX:
+        raise ValueError(f"{len(out)} selected; acknowledge at most {BULK_MAX} at a time")
+    return out
+
+
+def add_many(con, cfg, pairs, note: str = "", days=None, until=None) -> list[dict]:
+    """Acknowledge many (cve_id, item_id) pairs with one note and end date, all or nothing."""
+    from . import query
+    note = (note or "").strip()
+    if len(note) > NOTE_MAX:
+        raise ValueError(f"the note is over {NOTE_MAX} characters")
+    end = _until(days, until)
+    pairs = _pairs(pairs)
+    cves = {c for c, _ in pairs}
+    live = {(m["cve_id"], m["item_id"]): m for m in query.matches(
+        con, cfg, include_keyword=True, cve_ids=cves, acked="include")}
+    gone = [f"{c} on {i}" for c, i in pairs if (c, i) not in live]
+    if gone:
+        raise ValueError(f"{len(gone)} of the {len(pairs)} selected no longer match your inventory "
+                         f"(first: {gone[0]}). Reload and try again.")
+    sigs = query.signals_for(con, cves)
+    t = db.now()
+    rows = []
+    for c, i in pairs:
+        r = live[(c, i)]
+        ev = {"tier": r["tier"], "status": r["status"], "keys": evidence_keys(sigs.get(c, {}), r.get("ssvc_exploitation")),
+              "item_version": r.get("item_version")}
+        con.execute("INSERT OR REPLACE INTO ack(cve_id, item_id, created, until, note, evidence) VALUES(?,?,?,?,?,?)",
+                    (c, i, t, end, note, json.dumps(ev)))
+        db.add_event(con, c, "ack", {"item": i, "note": note, "until": end})
+        rows.append(r)
+    con.commit()
+    return rows
+
+
+def remove_many(con, pairs) -> int:
+    """Drop the acknowledgements for many (cve_id, item_id) pairs. Returns how many there were."""
+    pairs = _pairs(pairs)
+    n = 0
+    for c, i in pairs:
+        if con.execute("DELETE FROM ack WHERE cve_id = ? AND item_id = ?", (c, i)).rowcount:
+            db.add_event(con, c, "unack", {"item": i})
+            n += 1
+    if not n:
+        con.rollback()
+        raise ValueError("none of the selected are acknowledged")
+    con.commit()
+    return n
+
+
 def remove(con, cve_id: str, item_ref: str | None = None) -> list[str]:
     """Drop the acknowledgement(s) for cve_id. Returns the item ids it removed."""
     rows = [dict(r) for r in con.execute(

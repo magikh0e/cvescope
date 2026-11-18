@@ -327,7 +327,13 @@ cvescope unack CVE-2024-23897
 ```
 
 Or open the CVE on the page and use **Acknowledge** under "Your inventory". Without `--item`,
-`ack` covers every item the CVE shows up on.
+`ack` covers every item the CVE shows up on, and it takes several CVE IDs at once.
+
+To acknowledge many at once on the page, tick the boxes next to the matches (or "select all
+shown" after narrowing the list with the host picker or the text filter), add one note and an
+optional end date, and press **Acknowledge**. "Remove acknowledgement" does the reverse for the
+ticked ones that are acknowledged, and the confirmation has an **undo**. Only the rows on
+screen can be ticked, so a filter change never acknowledges something you can't see.
 
 An acknowledgement comes back by itself when its end date passes (the end date is optional), or
 when the evidence gets worse than it was when you acknowledged it: a higher tier, a new kind of
@@ -382,8 +388,8 @@ cvescope sync [--only kev,epss,...] [--rebaseline] [--dry-run] [--no-notify]
 cvescope inventory            collect versions and print them
 cvescope match                re-match without fetching
 cvescope report [--tier act|watch|info] [--keyword] [--acked] [-l]
-cvescope ack CVE-ID [--item NAME] [-m NOTE] [--days N | --until YYYY-MM-DD]
-cvescope unack CVE-ID [--item NAME]
+cvescope ack CVE-ID... [--item NAME] [-m NOTE] [--days N | --until YYYY-MM-DD]
+cvescope unack CVE-ID... [--item NAME]
 cvescope acks [--all]         acknowledgements and whether they still hold
 cvescope show CVE-2024-3400   everything known about one CVE (JSON)
 cvescope events [--days 7] [--all]

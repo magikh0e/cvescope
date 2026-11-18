@@ -10,6 +10,14 @@ releases are on the [releases page](https://github.com/magikh0e/cvescope/release
   and sorted by exposure or name. Clicking a host shows only its matches. The match list has
   a host picker, a text filter (CVE ID, title, item) and sorting by tier, newest, CVSS or EPSS.
   Each match says which host it's on; the choices are remembered per browser.
+- Acknowledge many at once: tick matches on the page (or "select all shown" after filtering by
+  host or text), give one note and end date, and acknowledge or remove them together, with an
+  undo. `cvescope ack` and `unack` take several CVE IDs. New endpoints `/api/ack/bulk` and
+  `/api/unack/bulk` (same-origin and JSON only like the others, all or nothing, up to 2000).
+- One machine seen by two collectors is one host on the page: a Proxmox guest named like
+  another collector's host ("VM 102 OpnSense" and OPNsense) merges automatically, and a new
+  `[hosts]` config section files any other host or guest id under the name you give
+  (`"VM 103" = "Home Assistant"`).
 - Acknowledgements: `cvescope ack` / `unack` / `acks`, and an Acknowledge button in the CVE
   panel. An acknowledged match leaves act now, watch, the counts and alerts, and comes back by
   itself when an optional end date passes or the evidence gets worse (a higher tier, a new kind

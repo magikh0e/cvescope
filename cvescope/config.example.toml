@@ -182,3 +182,10 @@ version = "30.0.4"
 # type = "homeassistant"
 # url = "http://homeassistant.local:8123"
 # token_env = "HASS_TOKEN"
+
+# The page groups the inventory by host. A Proxmox guest named like another collector's host
+# ("VM 102 OpnSense" and the OPNsense collector) is merged with it automatically; list the rest
+# here: the host name the page shows, or just the guest id, = the host to file it under.
+# [hosts]
+# "VM 103" = "Home Assistant"
+# "VM 100 unifi-os" = "UniFi"

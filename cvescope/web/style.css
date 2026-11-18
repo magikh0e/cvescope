@@ -75,6 +75,17 @@ button { font: inherit; color: inherit; }
 .filters input[type="search"] { flex: 1 1 220px; min-width: 0; max-width: 360px; }
 .filters.narrow { margin-bottom: 6px; }
 .row .meta .host { color: var(--text); opacity: .8; }
+.row .id .pick { margin: 0 8px 0 0; vertical-align: -2px; cursor: pointer; accent-color: var(--accent); }
+.bulk { position: sticky; top: 50px; z-index: 3; display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center;
+  padding: 6px 0 8px; margin-bottom: 4px; background: var(--bg); font-size: 13px; color: var(--muted); }
+.bulk .selall { display: flex; gap: 6px; align-items: center; cursor: pointer; white-space: nowrap; }
+.bulk .selall input { accent-color: var(--accent); }
+.bulkacts { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; flex: 1 1 420px; }
+.bulkacts input, .bulkacts select { padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--text); font-size: 12px; }
+.bulkacts input { flex: 1 1 220px; min-width: 0; }
+.bulkacts[hidden], .bulk[hidden] { display: none; }
+.bulkmsg.err { color: var(--act); }
+.btn:disabled { opacity: .5; cursor: wait; }
 .err { color: var(--act); font-size: 12px; }
 .inv .hint { grid-column: 1 / span 2; font-size: 11px; color: var(--muted); line-height: 1.3; }
 .badge { min-width: 20px; text-align: center; padding: 1px 6px; border-radius: 4px; font: 600 11px var(--mono); }

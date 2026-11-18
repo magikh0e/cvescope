@@ -54,6 +54,20 @@
         <label id="ackFilter" hidden><input type="checkbox" id="fAcked"> show acknowledged <span id="ackCount"></span></label>
         <span class="muted" id="filterNote"></span>
       </div>
+      <div class="bulk" id="bulkBar" hidden>
+        <label class="selall"><input type="checkbox" id="selAll"> <span id="selCount">select all shown</span></label>
+        <span class="bulkacts" id="bulkActions" hidden>
+          <input id="bulkNote" type="text" maxlength="500" placeholder="note for all of them, e.g. patched in the May window" autocomplete="off" aria-label="Note">
+          <select id="bulkDays" aria-label="How long">
+            <option value="">no end date</option><option value="7">for 7 days</option><option value="30">for 30 days</option>
+            <option value="90">for 90 days</option><option value="365">for a year</option>
+          </select>
+          <button id="bulkAck" class="btn primary" type="button">Acknowledge</button>
+          <button id="bulkUnack" class="btn" type="button">Remove acknowledgement</button>
+          <button id="bulkClear" class="linkish" type="button">clear selection</button>
+        </span>
+        <span class="bulkmsg" id="bulkMsg" role="status"></span>
+      </div>
       <div id="matchList" class="list"></div>
     </section>
 

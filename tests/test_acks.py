@@ -1,3 +1,4 @@
+import copy
 import datetime as dt
 import json
 import shutil
@@ -47,7 +48,8 @@ class State(unittest.TestCase):
 
 
 def make_cfg(tmp):
-    return config.Config(config._merge(config.DEFAULTS, {"data_dir": tmp}))
+    # deep copy: _merge shares nested tables with DEFAULTS, and these tests flip serve.read_only
+    return config.Config(config._merge(copy.deepcopy(config.DEFAULTS), {"data_dir": tmp}))
 
 
 def seed(con):
@@ -115,6 +117,29 @@ class Flow(unittest.TestCase):
             acks.add(self.con, self.cfg, "CVE-2024-0001", until="soon")
         with self.assertRaises(ValueError):
             acks.remove(self.con, "CVE-2024-0001")
+
+    def test_many_at_once(self):
+        pairs = [("cve-2013-3900", "osquery:win-minitop"), ("CVE-2024-0001", "static:web01"),
+                 ("CVE-2024-0001", "static:web01")]                      # duplicates collapse
+        rows = acks.add_many(self.con, self.cfg, pairs, "patch window", days=30)
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(self.ids(), set())
+        self.assertEqual({a["note"] for a in acks.load(self.con).values()}, {"patch window"})
+        self.assertEqual(acks.remove_many(self.con, pairs), 2)
+        self.assertEqual(len(self.ids()), 2)
+        with self.assertRaises(ValueError):                             # nothing left to remove
+            acks.remove_many(self.con, pairs)
+
+    def test_many_is_all_or_nothing(self):
+        with self.assertRaises(ValueError) as e:                        # not_affected there: refused
+            acks.add_many(self.con, self.cfg, [("CVE-2024-0001", "static:web01"),
+                                               ("CVE-2024-0001", "osquery:win-minitop")])
+        self.assertIn("1 of the 2", str(e.exception))
+        self.assertEqual(acks.load(self.con), {})
+        with self.assertRaises(ValueError):
+            acks.add_many(self.con, self.cfg, [])
+        with self.assertRaises(ValueError):
+            acks.add_many(self.con, self.cfg, [(f"CVE-2024-{i:04d}", "x") for i in range(acks.BULK_MAX + 1)])
 
     def test_resolved_when_the_match_goes(self):
         acks.add(self.con, self.cfg, "CVE-2024-0001")
@@ -184,6 +209,28 @@ class Http(unittest.TestCase):
         self.assertEqual(self.post("/api/ack", {"cve": "nope"})[0], 400)
         self.assertEqual(self.post("/api/ack", {"cve": "CVE-2024-0001", "days": "7"})[0], 400)
         self.assertEqual(self.get("/api/summary")["totals"]["acked"], 0)
+
+    def test_bulk_round_trip(self):
+        pairs = [{"cve": "CVE-2013-3900", "item": "osquery:win-minitop"}, {"cve": "CVE-2024-0001", "item": "static:web01"}]
+        code, d = self.post("/api/ack/bulk", {"pairs": pairs, "note": "done", "days": 7})
+        self.assertEqual((code, d["count"]), (200, 2))
+        self.assertEqual(self.get("/api/summary")["totals"]["acked"], 2)
+        self.assertEqual(self.post("/api/unack/bulk", {"pairs": pairs})[1]["count"], 2)
+        self.assertEqual(self.get("/api/summary")["totals"]["acked"], 0)
+
+    def test_bulk_refusals(self):
+        ok = [{"cve": "CVE-2024-0001", "item": "static:web01"}]
+        self.assertEqual(self.post("/api/ack/bulk", {"pairs": ok}, Origin="https://evil.example")[0], 403)
+        self.assertEqual(self.post("/api/ack/bulk", {"pairs": []})[0], 400)
+        self.assertEqual(self.post("/api/ack/bulk", {"pairs": [{"cve": "nope", "item": "x"}]})[0], 400)
+        self.assertEqual(self.post("/api/ack/bulk", {"pairs": [{"cve": "CVE-2024-0001"}]})[0], 400)
+        self.assertEqual(self.post("/api/ack/bulk", {"pairs": ok, "days": True})[0], 400)
+        big = [{"cve": "CVE-2024-0001", "item": "static:web01"}] * (acks.BULK_MAX + 1)
+        self.assertEqual(self.post("/api/ack/bulk", {"pairs": big})[0], 400)
+        self.assertEqual(self.post("/api/ack", b"x" * 5000)[0], 413)         # single endpoint keeps its small limit
+        self.assertEqual(self.get("/api/summary")["totals"]["acked"], 0)
+        self.cfg["serve"]["read_only"] = True
+        self.assertEqual(self.post("/api/ack/bulk", {"pairs": ok})[0], 403)
 
     def test_read_only(self):
         self.cfg["serve"]["read_only"] = True

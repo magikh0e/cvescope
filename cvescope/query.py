@@ -45,6 +45,50 @@ def host_of(name: str, collector: str) -> str:
     return p
 
 
+_GUEST = re.compile(r"^(?:VM|CT)\s+\d+\s+(.+)$", re.I)
+_GUEST_ID = re.compile(r"^(?:VM|CT)\s+\d+(?=\s|$)", re.I)
+
+
+def host_aliases(cfg) -> dict[str, str]:
+    """[hosts] in the config: "name the page shows" (or a guest id like "VM 103") = "host to file
+    it under", case-insensitive."""
+    raw = cfg.get("hosts") if hasattr(cfg, "get") else None
+    if not isinstance(raw, dict):
+        return {}
+    return {str(k).strip().lower(): v.strip() for k, v in raw.items()
+            if isinstance(v, str) and str(k).strip() and v.strip()}
+
+
+def merge_hosts(hosts, aliases: dict[str, str] | None = None) -> dict[str, str]:
+    """Host name -> the host to show it as, for machines two collectors see.
+
+    [hosts] aliases come first. Otherwise a Proxmox guest whose name, without its "VM 102 " or
+    "CT 113 " prefix, is another host's name joins that host: "VM 102 OpnSense" is the box the
+    OPNsense collector reads, "CT 113 pihole1" the one the Pi-hole collector reads.
+    """
+    aliases = aliases or {}
+    named = {h.lower(): h for h in hosts if not _GUEST.match(h)}
+    out = {}
+    for h in hosts:
+        gid = _GUEST_ID.match(h)  # "VM 103": an alias by guest id survives a VM rename
+        key = h.lower() if h.lower() in aliases else (gid.group(0).lower() if gid and gid.group(0).lower() in aliases else None)
+        if key:
+            target = aliases[key]
+            out[h] = named.get(target.lower(), target)
+            continue
+        m = _GUEST.match(h)
+        if m and m.group(1).strip().lower() in named:
+            out[h] = named[m.group(1).strip().lower()]
+    return out
+
+
+def host_names(con, cfg) -> dict[str, str]:
+    """item id -> host, duplicates merged (see merge_hosts)."""
+    raw = {iid: host_of(name, col) for iid, name, col in con.execute("SELECT id, name, collector FROM item")}
+    merged = merge_hosts(set(raw.values()), host_aliases(cfg))
+    return {iid: merged.get(h, h) for iid, h in raw.items()}
+
+
 def signals_for(con, ids) -> dict[str, dict[str, list]]:
     out: dict[str, dict[str, list]] = {}
     ids = list(ids)
@@ -120,13 +164,15 @@ def matches(con, cfg, tiers=("act", "watch", "info"), include_keyword=False, ite
         args += cve_ids
     rows = [dict(r) for r in con.execute(q, args)]
     sigs = signals_for(con, {r["cve_id"] for r in rows})
+    hosts = host_names(con, cfg)
     ack_rows = acks.load(con)
     out = []
     for r in rows:
         s = sigs.get(r["cve_id"], {})
         t, why = tier(s, r, r["epss_pct"], cfg)
         backports = json.loads(r.pop("item_extra") or "{}").get("backports")
-        r["host"] = host_of(r["item_name"], r.pop("item_collector"))
+        col = r.pop("item_collector")
+        r["host"] = hosts.get(r["item_id"]) or host_of(r["item_name"], col)
         # A "check" on a distro or vendor build (Proxmox kernel, FreeBSD base, a dpkg package no
         # tracker answered) means "upstream says affected, the vendor may have patched it". A PoC
         # or a high EPSS isn't enough to bother anyone with that; real exploitation (act) is.
@@ -295,6 +341,7 @@ def health(con, cfg, now: dt.datetime | None = None) -> dict:
 
 def summary(con, cfg) -> dict:
     items = [dict(r) for r in con.execute("SELECT id,name,version,collector,error,seen,extra FROM item ORDER BY collector, name")]
+    hosts = host_names(con, cfg)
     ms = matches(con, cfg, acked="include")
     n_acked = sum(1 for m in ms if m.get("ack", {}).get("state") == "active")
     ms = [m for m in ms if m.get("ack", {}).get("state") != "active"]
@@ -309,7 +356,7 @@ def summary(con, cfg) -> dict:
         it["counts"] = per.get(it["id"], {"act": 0, "watch": 0, "info": 0, "affected": 0})
         it["ruled_out"] = nots.get(it["id"], 0)
         it["extra"] = json.loads(it["extra"] or "{}")
-        it["host"] = host_of(it["name"], it["collector"])
+        it["host"] = hosts.get(it["id"]) or host_of(it["name"], it["collector"])
     src = [dict(r) for r in con.execute("SELECT name,last_ok,last_try,last_error FROM source ORDER BY name")]
     totals = {"act": 0, "watch": 0, "info": 0, "acked": n_acked}
     for m in ms:

@@ -102,33 +102,38 @@ def cmd_report(cfg, a):
 def cmd_ack(cfg, a):
     from . import acks
     con = _con(cfg)
-    cid = a.cve.upper()
-    try:
-        rows = acks.add(con, cfg, cid, a.item, a.note or "", days=a.days, until=a.until)
-    except ValueError as e:
-        print(f"cvescope ack: {e}", file=sys.stderr)
-        return 1
-    a_row = acks.load(con)[(cid, rows[0]["item_id"])]
-    for r in rows:
-        print(f"acknowledged {cid} on {r['item_name']}"
-              + (f" until {a_row['until']}" if a_row["until"] else " (no end date)"))
-    print("It comes back if the evidence gets worse. `cvescope unack` takes it back.")
-    return 0
+    failed = 0
+    for cid in dict.fromkeys(c.upper() for c in a.cve):
+        try:
+            rows = acks.add(con, cfg, cid, a.item, a.note or "", days=a.days, until=a.until)
+        except ValueError as e:
+            print(f"cvescope ack: {e}", file=sys.stderr)
+            failed += 1
+            continue
+        a_row = acks.load(con)[(cid, rows[0]["item_id"])]
+        for r in rows:
+            print(f"acknowledged {cid} on {r['item_name']}"
+                  + (f" until {a_row['until']}" if a_row["until"] else " (no end date)"))
+    if failed < len(set(c.upper() for c in a.cve)):
+        print("It comes back if the evidence gets worse. `cvescope unack` takes it back.")
+    return 1 if failed else 0
 
 
 def cmd_unack(cfg, a):
     from . import acks, query
     con = _con(cfg)
-    cid = a.cve.upper()
     names = query.item_names(con)
-    try:
-        removed = acks.remove(con, cid, a.item)
-    except ValueError as e:
-        print(f"cvescope unack: {e}", file=sys.stderr)
-        return 1
-    for iid in removed:
-        print(f"removed the acknowledgement of {cid} on {names.get(iid, iid)}")
-    return 0
+    failed = 0
+    for cid in dict.fromkeys(c.upper() for c in a.cve):
+        try:
+            removed = acks.remove(con, cid, a.item)
+        except ValueError as e:
+            print(f"cvescope unack: {e}", file=sys.stderr)
+            failed += 1
+            continue
+        for iid in removed:
+            print(f"removed the acknowledgement of {cid} on {names.get(iid, iid)}")
+    return 1 if failed else 0
 
 
 def cmd_acks(cfg, a):
@@ -255,7 +260,7 @@ def main(argv=None) -> int:
     s.set_defaults(fn=cmd_report)
 
     s = sub.add_parser("ack", help="acknowledge a CVE you've dealt with (hides it until the evidence gets worse)")
-    s.add_argument("cve")
+    s.add_argument("cve", nargs="+", help="one or more CVE IDs")
     s.add_argument("--item", help="item id, name, or part of a name (default: every item it shows up on)")
     s.add_argument("--note", "-m", help="what you did, e.g. 'applied the opt-in fix'")
     g = s.add_mutually_exclusive_group()
@@ -264,7 +269,7 @@ def main(argv=None) -> int:
     s.set_defaults(fn=cmd_ack)
 
     s = sub.add_parser("unack", help="take an acknowledgement back")
-    s.add_argument("cve")
+    s.add_argument("cve", nargs="+", help="one or more CVE IDs")
     s.add_argument("--item", help="item id, name, or part of a name (default: all of them)")
     s.set_defaults(fn=cmd_unack)
 

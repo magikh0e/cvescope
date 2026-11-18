@@ -23,6 +23,7 @@ TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=u
          ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml"}
 CVE_ID = re.compile(r"^CVE-\d{4}-\d{4,7}$")
 MAX_BODY = 4096
+MAX_BODY_BULK = 256 * 1024  # /api/ack/bulk and /api/unack/bulk: up to acks.BULK_MAX pairs
 
 
 def same_origin(headers, host: str) -> bool:
@@ -73,19 +74,22 @@ def make_handler(cfg, allowed_hosts: set[str]):
             ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
             if ctype != "application/json":
                 return self._json({"error": "send JSON"}, 415)
+            path = urllib.parse.urlsplit(self.path).path
+            limit = MAX_BODY_BULK if path in ("/api/ack/bulk", "/api/unack/bulk") else MAX_BODY
             try:
                 n = int(self.headers.get("Content-Length") or 0)
             except ValueError:
                 n = -1
-            if not 0 < n <= MAX_BODY:
-                return self._json({"error": "bad body size"}, 413 if n > MAX_BODY else 400)
+            if not 0 < n <= limit:
+                return self._json({"error": "bad body size"}, 413 if n > limit else 400)
             try:
                 body = json.loads(self.rfile.read(n))
                 if not isinstance(body, dict):
                     raise ValueError
             except ValueError:
                 return self._json({"error": "bad JSON"}, 400)
-            path = urllib.parse.urlsplit(self.path).path
+            if limit == MAX_BODY_BULK:
+                return self._bulk(path, body)
             cid = str(body.get("cve") or "").upper()
             if not CVE_ID.match(cid):
                 return self._json({"error": "bad id"}, 400)
@@ -103,6 +107,30 @@ def make_handler(cfg, allowed_hosts: set[str]):
                 if path == "/api/unack":
                     return self._json({"ok": True, "items": acks.remove(con, cid, item)})
                 return self._json({"error": "unknown endpoint"}, 404)
+            except ValueError as e:
+                return self._json({"error": str(e)}, 400)
+            finally:
+                con.close()
+
+        def _bulk(self, path, body):
+            raw = body.get("pairs")
+            if not isinstance(raw, list) or not 0 < len(raw) <= acks.BULK_MAX:
+                return self._json({"error": f"send 1 to {acks.BULK_MAX} pairs"}, 400)
+            pairs = []
+            for p in raw:
+                cid = str(p.get("cve") or "").upper() if isinstance(p, dict) else ""
+                item = p.get("item") if isinstance(p, dict) else None
+                if not CVE_ID.match(cid) or not isinstance(item, str) or not 0 < len(item) <= 300:
+                    return self._json({"error": "bad pair"}, 400)
+                pairs.append((cid, item))
+            note, days = body.get("note") or "", body.get("days")
+            if not isinstance(note, str) or (days is not None and (not isinstance(days, int) or isinstance(days, bool))):
+                return self._json({"error": "bad note or days"}, 400)
+            con = db.connect(cfg.db_path)
+            try:
+                if path == "/api/ack/bulk":
+                    return self._json({"ok": True, "count": len(acks.add_many(con, cfg, pairs, note, days=days))})
+                return self._json({"ok": True, "count": acks.remove_many(con, pairs)})
             except ValueError as e:
                 return self._json({"error": str(e)}, 400)
             finally:
