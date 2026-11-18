@@ -224,8 +224,8 @@ def _apply_distro(con, it: dict, rows: dict) -> None:
         elif status == "minor":
             rows[(cve, it["id"])] = ("not_affected", "distro", f"{label} rates it unimportant (not patched by design)")
         elif status == "notaff":
-            rows[(cve, it["id"])] = ("not_affected", "distro",
-                                     f"{label} isn't affected (the tracker marks it not-affected)")
+            rows[(cve, it["id"])] = ("not_affected", "distro", f"{label} isn't affected ({note})" if note
+                                     else f"{label} isn't affected (the tracker marks it not-affected)")
         else:
             rows[(cve, it["id"])] = ("check", "distro", f"{label} hasn't decided yet ({note})" if note
                                      else f"{label} hasn't decided (may need fixing)")
@@ -529,6 +529,35 @@ def _apply_psa(con, it: dict, rows: dict) -> None:
             if have and dpkg_cmp(have, fix) >= 0:
                 why += f"; {have} is already installed: reboot to run it"
         rows[(cve, it["id"])] = ("affected" if hit else "not_affected", "psa", why)
+
+
+FIX_STATES = ("available", "none", "wontfix", "unknown")
+
+
+def fix_state(status: str, how: str, detail: str | None) -> str:
+    """Is there a fix you can install? Read from the reason the vendor-data steps above write.
+
+    available  the vendor shipped a fixed version: update (or reboot, for a Proxmox kernel)
+    none       no fix released yet, or the vendor hasn't decided
+    wontfix    the vendor plans no update for this release (minor issue, ignored, out of support)
+    unknown    no vendor patch data: an upstream version range or a keyword match
+
+    Keep this next to the reasons it reads; tests/test_fix_state.py runs the real steps.
+    """
+    d = detail or ""
+    if status not in ("affected", "check"):
+        return "unknown"
+    if how == "distro":
+        if " is newer than " in d:
+            return "available"
+        if any(s in d for s in ("won't fix it", "no security update planned", "out of Debian security support")):
+            return "wontfix"
+        return "none"
+    if how in ("vuxml", "osv"):
+        return "available" if ": fixed in " in d or "; update available: " in d else "none"
+    if how == "psa":
+        return "available"  # a PSA always names the package version that fixes it
+    return "unknown"
 
 
 def run(con, cfg) -> str:

@@ -5,7 +5,14 @@ releases are on the [releases page](https://github.com/magikh0e/cvescope/release
 
 ## [Unreleased]
 
+## [0.2.7] - 2026-11-17
+
 ### Added
+- Every finding says whether you can fix it now: **fix available** (the vendor shipped a fixed
+  build), **no fix yet**, **no update planned**, or **not known** (no vendor patch data). The
+  page has a fix filter with counts and can group the list by it, rows carry a "fix available"
+  tag, and reports list it per finding with a summary line ("12 fix available, 40 no fix
+  yet, ..."). In CSV it's a new last column, so existing column positions don't move.
 - Fresh Ubuntu CVEs: with `sources.ubuntu_lookup = true`, a CVE under two weeks old that
   Ubuntu's OVAL feed doesn't list yet (it leaves out untriaged and not-affected ones) is looked
   up in Ubuntu's CVE tracker. Not-affected settles it right away; untriaged reads as "hasn't
@@ -22,6 +29,7 @@ releases are on the [releases page](https://github.com/magikh0e/cvescope/release
   exits with status 1. The OS drops the lock when the process ends, however it ends.
 
 ### Changed
+- CI lints with ruff (rules pinned in pyproject.toml) and checks that the page's script parses.
 - README screenshots retaken from the demo config: host grouping, filters, bulk acknowledge,
   report links and the version label, plus new shots of an SBOM host and an HTML report.
 
@@ -31,6 +39,10 @@ releases are on the [releases page](https://github.com/magikh0e/cvescope/release
   It now says the version isn't among those the record lists as fixed, and the rest are affected.
 - Findings in EPSS's very top percentile read "EPSS top 0%"; they read "top 1%" now.
 - Report titles are cut at a word with an ellipsis instead of mid-word.
+- A Debian CVE the tracker ignores because the bug is only in code for a platform Debian
+  doesn't build (such as "Arm v7-M not a supported architecture") is not affected, not "no fix
+  released yet". The next sync downloads Debian's tracker data in full once to apply it.
+- Right after a sync, the header says "synced just now" instead of "1 min ago".
 
 ## [0.2.6] - 2026-11-17
 
@@ -207,7 +219,8 @@ First release.
 - Act now / watch / info tiers, change events, and ntfy, Home Assistant and webhook alerts.
 - A local web page (127.0.0.1, Host header checked) and a CLI.
 
-[Unreleased]: https://github.com/magikh0e/cvescope/compare/v0.2.6...HEAD
+[Unreleased]: https://github.com/magikh0e/cvescope/compare/v0.2.7...HEAD
+[0.2.7]: https://github.com/magikh0e/cvescope/compare/v0.2.6...v0.2.7
 [0.2.6]: https://github.com/magikh0e/cvescope/compare/v0.2.5...v0.2.6
 [0.2.5]: https://github.com/magikh0e/cvescope/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/magikh0e/cvescope/compare/v0.2.3...v0.2.4

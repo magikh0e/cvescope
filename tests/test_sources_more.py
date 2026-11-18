@@ -250,7 +250,10 @@ class History(unittest.TestCase):
         con = db.connect(":memory:")
         con.execute("INSERT INTO item(id, name) VALUES('static:web01-openssh', 'OpenSSH (web01)')")
         names = query.item_names(con)
-        ev = lambda kind, detail: {"kind": kind, "detail": json.dumps(detail)}
+
+        def ev(kind, detail):
+            return {"kind": kind, "detail": json.dumps(detail)}
+
         self.assertEqual(query.event_summary(ev("match", {"item": "static:web01-openssh", "status": "affected"}), names),
                          "now matches your inventory (OpenSSH (web01), affected)")
         # an item that's gone from the inventory keeps its id

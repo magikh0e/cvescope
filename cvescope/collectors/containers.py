@@ -101,7 +101,7 @@ def parse_ps(out: str) -> list[dict]:
     out = out.strip()
     if not out:
         return []
-    rows = json.loads(out) if out.startswith("[") else [json.loads(l) for l in out.splitlines() if l.strip().startswith("{")]
+    rows = json.loads(out) if out.startswith("[") else [json.loads(ln) for ln in out.splitlines() if ln.strip().startswith("{")]
     res = []
     for r in rows:
         names = r.get("Names")

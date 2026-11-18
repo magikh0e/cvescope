@@ -35,8 +35,8 @@ def proxmox(e: dict) -> list[dict]:
     tok = secret(e, "token")
     if " " in tok:  # "host user@realm!id=secret" lines, one per host
         host = c.host
-        lines = [l.split() for l in tok.splitlines() if l.strip()]
-        tok = next((l[-1] for l in lines if l[0] == host), lines[0][-1])
+        lines = [ln.split() for ln in tok.splitlines() if ln.strip()]
+        tok = next((parts[-1] for parts in lines if parts[0] == host), lines[0][-1])
     h = {"Authorization": "PVEAPIToken=" + tok}
     v = c.get("/api2/json/version", h)["data"]
     nodes = [n["node"] for n in c.get("/api2/json/nodes", h)["data"]]

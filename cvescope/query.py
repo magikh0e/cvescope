@@ -7,6 +7,7 @@ import json
 import re
 
 from . import __version__, acks, db, vulnid
+from .match import fix_state
 
 TIER_LABEL = {"act": "Act now", "watch": "Watch", "info": "Info"}
 TIER_ORDER = {"act": 0, "watch": 1, "info": 2}
@@ -182,6 +183,7 @@ def matches(con, cfg, tiers=("act", "watch", "info"), include_keyword=False, ite
         if t not in tiers:
             continue
         r["tier"], r["why"] = t, why
+        r["fix"] = fix_state(r["status"], r["how"], r["detail"])
         a = ack_rows.get((r["cve_id"], r["item_id"]))
         if a:
             st, reason = acks.state(a, t, r["status"], acks.evidence_keys(s, r["ssvc_exploitation"]))

@@ -45,6 +45,9 @@ The write-up on my site covers why I built it and how it ranks things:
   by host or item with foldable groups, so even a few hundred "info" findings stay readable.
   A **sync now** button runs a full sync from the page when you don't want to wait for the
   schedule.
+- **What you can fix today:** each finding says whether the vendor has shipped a fix (fix
+  available), hasn't yet, or plans none. Filter or group by it to find the updates that clear
+  findings, and skip the ones only the vendor can move.
 
 ## Quick start
 
@@ -144,6 +147,16 @@ you're checking; the OVAL download itself sends nothing.
 why when the tracker does: "no security update planned: Minor issue" (it may arrive in a point
 release, or never), "postponed by Debian", or "a fix is queued for the next point release". The same
 applies to `osquery` `deb_packages` results and to Debian/Ubuntu VMs found through Proxmox.
+
+Each finding carries what that means for you, as a **fix** state the page can filter and group
+by, and every report lists:
+
+| Fix | Means | Read from |
+|---|---|---|
+| **available** | The vendor shipped a fixed build: update (or reboot, for a Proxmox kernel already installed) | Debian/Ubuntu fix newer than installed, VuXML or OSV "fixed in", every Proxmox PSA |
+| **not yet** | No fix released, or the vendor hasn't decided | Debian/Ubuntu open, postponed, queued for a point release, not triaged |
+| **not planned** | The vendor plans no update for this release | "no security update planned", "won't fix it", out of security support |
+| **not known** | No vendor patch data | Upstream version ranges, keyword matches |
 
 ### FreeBSD and OPNsense packages
 
@@ -430,7 +443,8 @@ removal is kept in the CVE's history. "Show acknowledged" on the page lists the 
 ## Reports
 
 A report puts it all in one place for someone else, or for later: the counts, the findings
-that need doing (with why they rank where they do and what fixes them), every host, what
+that need doing (with why they rank where they do, what fixes them, and whether that fix is
+out yet), every host, what
 changed in the last days, what's acknowledged with its note and end date, and the blind spots
 (items without a version, failed collectors, feeds with errors).
 
@@ -442,7 +456,8 @@ cvescope report --format md --days 30 > status.md
 
 - `html` is one self-contained file without scripts; open it and print to PDF.
 - `md` pastes into a ticket, a wiki or a chat.
-- `csv` has one row per finding (acknowledged ones flagged) for a spreadsheet.
+- `csv` has one row per finding (acknowledged ones flagged) for a spreadsheet. New columns go
+  at the end (`fix` is the last), so a sheet built on an older report keeps working.
 - `json` is everything, for other tools.
 
 `--tier` sets which findings are listed (the counts always cover all of them), `--host` keeps

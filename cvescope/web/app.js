@@ -143,6 +143,7 @@ function renderInventory() {
 // ---------- sync health ----------
 function ago(hours) {
   if (hours == null) return "";
+  if (hours < 1 / 60) return "just now";
   if (hours < 1) return `${Math.max(1, Math.round(hours * 60))} min ago`;
   if (hours < 48) return `${Math.round(hours)} h ago`;
   return `${Math.round(hours / 24)} days ago`;
@@ -277,6 +278,7 @@ function matchRow(m) {
       m.epss_pct != null ? h("span", { title: "EPSS percentile", text: "EPSS " + pct(m.epss_pct) }) : null),
     h("span", { class: "meta" },
       h("span", { class: `pill ${m.status}`, text: m.status }),
+      m.fix && FIX[m.fix] && FIX[m.fix].pill ? h("span", { class: `pill fix-${m.fix}`, title: m.detail || "", text: FIX[m.fix].pill }) : null,
       acked ? h("span", { class: "pill acked", title: ackLine(a), text: "acknowledged" }) : null,
       h("span", { text: `${m.item_name}${m.item_version ? " " + m.item_version : ""}` }),
       m.host && !m.item_name.includes(m.host) ? h("span", { class: "host", text: "on " + m.host }) : null,
@@ -323,13 +325,17 @@ function renderMatches() {
   if (!it && state.host) rows = rows.filter((m) => m.host === state.host);
   if (text) rows = rows.filter((m) => [m.cve_id, m.title, m.description, m.item_name, m.host, m.status]
     .some((x) => x && String(x).toLowerCase().includes(text)));
+  const fix = $("#fFix").value;
+  countFixes(rows);
+  if (fix) rows = rows.filter((m) => m.fix === fix);
   const sort = SORTS[$("#fSort").value];
   if (sort) rows = [...rows].sort((a, b) => sort(a, b) || (TIER_RANK[a.tier] - TIER_RANK[b.tier]));
   const scope = it ? it.name : state.host;
   const note = $("#filterNote");
   note.replaceChildren();
-  if (scope || text) {
-    note.append(`showing ${rows.length} of ${state.rows.length}${scope ? " for " + scope : ""}${text ? ` matching “${text}”` : ""} `,
+  if (scope || text || fix) {
+    note.append(`showing ${rows.length} of ${state.rows.length}${scope ? " for " + scope : ""}${text ? ` matching “${text}”` : ""}`
+      + `${fix ? ` with ${FIX[fix].label}` : ""} `,
       h("button", { class: "linkish", type: "button", text: "clear", onclick: clearFilters }));
   }
   const groups = groupRows(rows);
@@ -356,7 +362,7 @@ function renderMatches() {
 function groupRows(rows) {
   const by = $("#fGroup").value;
   if (!by) return null;
-  const key = by === "host" ? (m) => m.host || "?" : (m) => m.item_name;
+  const key = by === "host" ? (m) => m.host || "?" : by === "fix" ? (m) => FIX[m.fix || "unknown"].group : (m) => m.item_name;
   const map = new Map();
   for (const m of rows) {
     const k = key(m);
@@ -365,8 +371,28 @@ function groupRows(rows) {
     g.rows.push(m);
     g[m.tier] += 1;
   }
+  if (by === "fix") return [...map.values()].sort((a, b) => FIX_GROUPS.indexOf(a.name) - FIX_GROUPS.indexOf(b.name));
   return [...map.values()].sort((a, b) => b.act - a.act || b.watch - a.watch || b.rows.length - a.rows.length
     || byName(a.name, b.name));
+}
+
+// ---------- is there a fix? ----------
+// The server reads it from the vendor's own data: a newer package exists (available), nothing
+// released yet (none), the vendor plans no update (wontfix), or no vendor data at all (unknown).
+const FIX = {
+  available: { label: "fix available", group: "Fix available: update to clear these", pill: "fix available" },
+  none: { label: "no fix yet", group: "No fix released yet", pill: "no fix yet" },
+  wontfix: { label: "no update planned", group: "No update planned by the vendor", pill: "no update planned" },
+  unknown: { label: "fix not known", group: "Not known: no vendor patch data", pill: null },
+};
+const FIX_GROUPS = ["available", "none", "wontfix", "unknown"].map((k) => FIX[k].group);
+const FIX_OPTION = { available: "available", none: "not yet", wontfix: "not planned", unknown: "not known" };
+
+// the fix menu shows how many of the rows on screen fall in each state
+function countFixes(rows) {
+  const n = { available: 0, none: 0, wontfix: 0, unknown: 0 };
+  for (const m of rows) n[m.fix || "unknown"] += 1;
+  for (const o of $("#fFix").options) if (o.value) o.textContent = `${FIX_OPTION[o.value]} (${n[o.value]})`;
 }
 
 function groupTools(groups) {
@@ -455,6 +481,7 @@ function bulkUnack() {
 
 function clearFilters() {
   $("#fText").value = "";
+  $("#fFix").value = "";
   if (state.item || state.host) { state.item = null; state.host = null; markSelection(); loadMatches(); } else renderMatches();
 }
 
@@ -655,6 +682,7 @@ $("#bulkUnack").addEventListener("click", bulkUnack);
 $("#bulkClear").addEventListener("click", () => { state.sel.clear(); renderMatches(); });
 $("#fSort").addEventListener("change", () => { savePref("fSort"); renderMatches(); });
 $("#fGroup").addEventListener("change", () => { savePref("fGroup"); renderMatches(); });
+$("#fFix").addEventListener("change", renderMatches);
 $("#closeDetail").addEventListener("click", closeDetail);
 $("#syncNow").addEventListener("click", syncNow);
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !e.target.closest(".ackform")) closeDetail(); });

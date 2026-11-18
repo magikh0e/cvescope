@@ -36,6 +36,9 @@ LOOKUPS_PER_RUN = 60
 
 _UB = re.compile(r'comment="\((CVE-\d{4}-\d+)\) (\S+) package in (\w+) ([^"]*)"')
 _NOTE = re.compile(r"note: '([^']+)'")
+# Debian's <ignored> reason when the bug is only in code for a platform Debian doesn't build for
+_NO_PLATFORM = re.compile(r"\bnot (?:a )?supported (?:architecture|arch|platform)\b|"
+                          r"\bunsupported (?:architecture|arch|platform)\b", re.I)
 
 
 def wanted(con, cfg) -> set[str]:
@@ -52,6 +55,9 @@ def _store(con, releases, rows):
     con.executemany("INSERT OR REPLACE INTO distro_fix(release, package, cve_id, status, fixed, note) "
                     "VALUES(?,?,?,?,?,?)", rows)
     con.commit()
+
+
+DEBIAN_PARSER = "tracker2"   # bump when debian_status reads the feed differently: forces one full fetch
 
 
 def debian_status(r: dict) -> tuple[str, str | None, str | None]:
@@ -71,6 +77,8 @@ def debian_status(r: dict) -> tuple[str, str | None, str | None]:
         note = "the package is out of Debian security support"
     elif why and kind == "postponed":
         note = f"postponed by Debian: {why}"
+    elif why and kind == "ignored" and _NO_PLATFORM.search(why):
+        return "notaff", None, f"only affects a platform Debian doesn't support: {why}"
     elif why and kind == "ignored":
         note = f"Debian won't fix it here: {why}"
     elif why:
@@ -104,7 +112,7 @@ def _debian(con, cfg, releases: set[str]) -> str:
     name = "distro:debian"
     src = db.source_get(con, name)
     st = src["state"]
-    same = st.get("releases") == sorted(releases) and st.get("feed") == "tracker"
+    same = st.get("releases") == sorted(releases) and st.get("feed") == DEBIAN_PARSER
     try:
         body, modified = net.get_since(DEBIAN_URL, src["etag"] if same else None, timeout=600)
     except net.NotModified:
@@ -113,7 +121,7 @@ def _debian(con, cfg, releases: set[str]) -> str:
     rows, missing = debian_rows(json.loads(body), releases)
     del body
     _store(con, releases, rows)
-    db.source_ok(con, name, {"releases": sorted(releases), "feed": "tracker"}, modified)
+    db.source_ok(con, name, {"releases": sorted(releases), "feed": DEBIAN_PARSER}, modified)
     out = f"Debian {', '.join(sorted(r.split(':')[1] for r in releases))}: {len(rows):,} entries"
     if missing:
         out += f" (the tracker has nothing for {', '.join(sorted(missing))}: out of support?)"
