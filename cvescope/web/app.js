@@ -2,11 +2,12 @@
 // cvescope local page. Every string from feeds is untrusted: DOM is built with textContent only.
 
 const $ = (s) => document.querySelector(s);
-const state = { item: null, host: null, current: null, items: [], rows: [], shown: [], sel: new Map(), readOnly: false, acked: 0 };
+const state = { item: null, host: null, current: null, items: [], rows: [], shown: [], sel: new Map(), readOnly: false, acked: 0,
+  collapsed: new Set() };
 const selKey = (m) => `${m.cve_id}|${m.item_id}`;
 
 // view choices remembered per browser; storage can be missing (private window), so never rely on it
-const PREFS = ["invGroup", "invSort", "fSort"];
+const PREFS = ["invGroup", "invSort", "fSort", "fGroup"];
 function loadPrefs() {
   for (const k of PREFS) {
     try { const v = localStorage.getItem("cvescope." + k); if (v && $("#" + k).querySelector(`option[value="${v}"]`)) $("#" + k).value = v; } catch { /* ignore */ }
@@ -255,12 +256,15 @@ function renderMatches() {
     note.append(`showing ${rows.length} of ${state.rows.length}${scope ? " for " + scope : ""}${text ? ` matching “${text}”` : ""} `,
       h("button", { class: "linkish", type: "button", text: "clear", onclick: clearFilters }));
   }
-  // only what's on screen can stay selected: a filter change never acknowledges hidden rows
-  state.shown = rows;
-  const visible = new Set(rows.map(selKey));
+  const groups = groupRows(rows);
+  // only what's on screen can stay selected: a filter change (or a collapsed group) never
+  // acknowledges rows you can't see
+  state.shown = groups ? groups.flatMap((g) => (state.collapsed.has(g.key) ? [] : g.rows)) : rows;
+  const visible = new Set(state.shown.map(selKey));
   for (const k of [...state.sel.keys()]) if (!visible.has(k)) state.sel.delete(k);
   updateBulk();
   const list = $("#matchList");
+  if (rows.length && groups) { list.replaceChildren(groupTools(groups), ...groups.flatMap(groupBlock)); return; }
   if (rows.length) { list.replaceChildren(...rows.map(matchRow)); return; }
   if (text && state.rows.length) { list.replaceChildren(empty(`Nothing here matches “${text}”.`)); return; }
   const info = $("#fInfo").checked;
@@ -268,6 +272,50 @@ function renderMatches() {
     : state.host ? `Nothing ${info ? "" : "exploited or likely "}matches anything on ${state.host}.${info ? "" : " Tick “include info” to see the rest."}`
       : "No exploited or likely CVEs match your inventory right now. Tick “include info” to see the rest."
         + (state.acked && !$("#fAcked").checked ? ` ${state.acked} acknowledged ${state.acked === 1 ? "one is" : "ones are"} hidden.` : "")));
+}
+
+// ---------- grouping the list by host or item ----------
+// Long lists (all of "info", say) read better as one block per host or per item, most urgent
+// first. A group can be folded away; folded rows count as hidden for "select all shown".
+function groupRows(rows) {
+  const by = $("#fGroup").value;
+  if (!by) return null;
+  const key = by === "host" ? (m) => m.host || "?" : (m) => m.item_name;
+  const map = new Map();
+  for (const m of rows) {
+    const k = key(m);
+    if (!map.has(k)) map.set(k, { key: `${by}:${k}`, name: k, rows: [], act: 0, watch: 0, info: 0 });
+    const g = map.get(k);
+    g.rows.push(m);
+    g[m.tier] += 1;
+  }
+  return [...map.values()].sort((a, b) => b.act - a.act || b.watch - a.watch || b.rows.length - a.rows.length
+    || byName(a.name, b.name));
+}
+
+function groupTools(groups) {
+  const all = (fold) => () => {
+    for (const g of groups) { if (fold) state.collapsed.add(g.key); else state.collapsed.delete(g.key); }
+    renderMatches();
+  };
+  return h("div", { class: "mgroup-tools" }, `${groups.length} group${groups.length === 1 ? "" : "s"} · `,
+    h("button", { class: "linkish", type: "button", text: "fold all", onclick: all(true) }), " · ",
+    h("button", { class: "linkish", type: "button", text: "unfold all", onclick: all(false) }));
+}
+
+function groupBlock(g) {
+  const folded = state.collapsed.has(g.key);
+  const toggle = () => {
+    if (folded) state.collapsed.delete(g.key); else state.collapsed.add(g.key);
+    renderMatches();
+  };
+  const head = h("button", { class: `mgroup${folded ? " folded" : ""}`, type: "button", "aria-expanded": String(!folded), onclick: toggle },
+    h("span", { class: "caret", text: folded ? "▸" : "▾" }),
+    h("span", { class: "gname", text: g.name }),
+    h("span", { class: "gcount", text: `${g.rows.length} finding${g.rows.length === 1 ? "" : "s"}` }),
+    riskBadges(g),
+    g.info ? h("span", { class: "badge info", title: "info", text: g.info }) : null);
+  return folded ? [head] : [head, ...g.rows.map(matchRow)];
 }
 
 // ---------- acknowledging many at once ----------
@@ -530,6 +578,7 @@ $("#bulkAck").addEventListener("click", bulkAck);
 $("#bulkUnack").addEventListener("click", bulkUnack);
 $("#bulkClear").addEventListener("click", () => { state.sel.clear(); renderMatches(); });
 $("#fSort").addEventListener("change", () => { savePref("fSort"); renderMatches(); });
+$("#fGroup").addEventListener("change", () => { savePref("fGroup"); renderMatches(); });
 $("#closeDetail").addEventListener("click", closeDetail);
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !e.target.closest(".ackform")) closeDetail(); });
 $("#searchForm").addEventListener("submit", (e) => { e.preventDefault(); const q = $("#q").value.trim(); if (q.length >= 3) doSearch(q); });

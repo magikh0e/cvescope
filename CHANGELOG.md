@@ -5,6 +5,15 @@ releases are on the [releases page](https://github.com/magikh0e/cvescope/release
 
 ## [Unreleased]
 
+### Added
+- Fresh Ubuntu CVEs: with `sources.ubuntu_lookup = true`, a CVE under two weeks old that
+  Ubuntu's OVAL feed doesn't list yet (it leaves out untriaged and not-affected ones) is looked
+  up in Ubuntu's CVE tracker. Not-affected settles it right away; untriaged reads as "hasn't
+  decided yet (not triaged)". Answers are cached, OVAL wins when it lists the CVE, and it's off
+  by default because each lookup sends a CVE ID to ubuntu.com.
+- The match list can be grouped by host or by item, most urgent group first, with groups that
+  fold away (fold all / unfold all). Folded rows don't count for "select all shown".
+
 ### Changed
 - README screenshots retaken from the demo config: host grouping, filters, bulk acknowledge,
   report links and the version label, plus new shots of an SBOM host and an HTML report.

@@ -26,6 +26,8 @@ DEFAULTS = {
         "local_archive": [],
         "distro": True,
         "distro_releases": [],
+        # ask Ubuntu's per-CVE tracker about CVEs too new for its OVAL feed (sends those CVE IDs)
+        "ubuntu_lookup": False,
         "freebsd": True,
         "osv": True,
         "proxmox": True,

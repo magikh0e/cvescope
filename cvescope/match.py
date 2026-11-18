@@ -227,8 +227,8 @@ def _apply_distro(con, it: dict, rows: dict) -> None:
             rows[(cve, it["id"])] = ("not_affected", "distro",
                                      f"{label} isn't affected (the tracker marks it not-affected)")
         else:
-            why = f" ({note})" if note else ""
-            rows[(cve, it["id"])] = ("check", "distro", f"{label} hasn't decided (may need fixing){why}")
+            rows[(cve, it["id"])] = ("check", "distro", f"{label} hasn't decided yet ({note})" if note
+                                     else f"{label} hasn't decided (may need fixing)")
     cutoff = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=_RECENT_DAYS)).strftime("%Y-%m-%d")
     stale = [cid for (cid, iid), v in rows.items() if iid == it["id"] and cid not in listed and v[0] == "check"]
     for i in range(0, len(stale), 500):

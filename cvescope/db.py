@@ -42,8 +42,8 @@ CREATE TABLE IF NOT EXISTS epss(
 -- status: fixed | open | maybe | minor (won't be patched, rated unimportant) | notaff (never affected)
 -- note: why an open one has no update yet (Debian: no DSA planned, postponed, next point release)
 CREATE TABLE IF NOT EXISTS distro_fix(
-  release TEXT, package TEXT, cve_id TEXT, status TEXT, fixed TEXT, note TEXT,
-  PRIMARY KEY(release, package, cve_id)) WITHOUT ROWID;
+  release TEXT, package TEXT, cve_id TEXT, status TEXT, fixed TEXT, note TEXT, src TEXT,
+  PRIMARY KEY(release, package, cve_id)) WITHOUT ROWID;  -- src: NULL = the distro's feed, 'ubuntu-cve' = per-CVE lookup
 
 -- FreeBSD VuXML (what `pkg audit` reads): affected version ranges per package name and CVE.
 -- ranges is JSON: [[["ge","14.1"],["lt","14.1_6"]], ...]; sa names the FreeBSD advisory if any
@@ -62,6 +62,10 @@ CREATE TABLE IF NOT EXISTS osv_pkg(
 -- [[package, version], ...] with kernels as ["kernel:7.0", "7.0.14-25"]
 CREATE TABLE IF NOT EXISTS psa(
   id TEXT PRIMARY KEY, rev INTEGER, date TEXT, title TEXT, cves TEXT, fixed TEXT, url TEXT, details TEXT) WITHOUT ROWID;
+
+-- Ubuntu's CVE tracker, one answer per CVE, for CVEs too fresh for Canonical's OVAL feed
+CREATE TABLE IF NOT EXISTS ubuntu_cve(
+  cve_id TEXT PRIMARY KEY, fetched TEXT, found INTEGER, data TEXT) WITHOUT ROWID;
 
 -- OSV.dev advisories by id, kept until they change (osv_pkg is rebuilt from these each sync)
 CREATE TABLE IF NOT EXISTS osv_vuln(
@@ -113,6 +117,8 @@ def _migrate(con) -> None:
     cols = {r[1] for r in con.execute("PRAGMA table_info(distro_fix)")}
     if "note" not in cols:
         con.execute("ALTER TABLE distro_fix ADD COLUMN note TEXT")
+    if "src" not in cols:
+        con.execute("ALTER TABLE distro_fix ADD COLUMN src TEXT")
     if "details" not in {r[1] for r in con.execute("PRAGMA table_info(psa)")}:
         con.execute("ALTER TABLE psa ADD COLUMN details TEXT")
 

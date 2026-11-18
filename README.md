@@ -41,6 +41,8 @@ The write-up on my site covers why I built it and how it ranks things:
 - **Alerts** via ntfy, Home Assistant, or any webhook, for changes at or above a tier you pick.
 - **Acknowledgements** for what you've already handled. They hide a CVE until the evidence
   gets worse or an end date you set passes.
+- **A page you can slice:** the inventory grouped by host, filters, and the match list grouped
+  by host or item with foldable groups, so even a few hundred "info" findings stay readable.
 
 ## Quick start
 
@@ -126,6 +128,15 @@ Ubuntu ~2 MB per release). A CVE the tracker doesn't list for the package counts
 affecting it, unless it's under two weeks old and may not have been triaged yet. One the
 tracker marks not-affected for your release (the vulnerable code never shipped in it) is
 not_affected even if the upstream range covers your version.
+
+Ubuntu's OVAL feed leaves out CVEs Canonical hasn't triaged yet and ones it marks
+not-affected, so a CVE under two weeks old stays "check" on an Ubuntu host. With
+`sources.ubuntu_lookup = true`, cvescope asks Ubuntu's CVE tracker about exactly those (fresh,
+"check", no OVAL answer) and uses what it says: not-affected settles it at once, "needs triage"
+reads as "hasn't decided yet (not triaged)", and released or needed work as they do from OVAL.
+Answers are cached (decided ones for three days, untriaged ones twelve hours) and OVAL wins
+whenever it lists the CVE. It's off by default because each lookup tells Canonical which CVE ID
+you're checking; the OVAL download itself sends nothing.
 
 "Affected" with no update in `apt` usually means Debian hasn't released a fix. The reason says
 why when the tracker does: "no security update planned: Minor issue" (it may arrive in a point
@@ -334,6 +345,7 @@ live in `cvescope/collectors/packages.py`; add your own per item with `aliases =
 | your own folders | any file that mentions a CVE ID | local scan, only new files after the first run |
 | [Debian security tracker](https://security-tracker.debian.org/) JSON | fixed package version per Debian release | ~15 MB, only if you run Debian |
 | [Ubuntu OVAL](https://security-metadata.canonical.com/oval/) | fixed package version per Ubuntu release | ~2 MB per release you run |
+| [Ubuntu CVE tracker](https://ubuntu.com/security/cves) (optional) | Ubuntu's answer for fresh CVEs its OVAL feed doesn't list yet | one small request per fresh CVE, cached; off unless `sources.ubuntu_lookup = true` |
 | [FreeBSD VuXML](https://vuxml.freebsd.org/) | affected package builds and base-system patch levels, as `pkg audit` uses them | ~1.4 MB, only if you run OPNsense or FreeBSD |
 | [OSV.dev](https://osv.dev/) | advisories for Home Assistant Core and every SBOM language package (PyPI, npm, Maven, Go, ...) with the affected releases | one batch query per sync plus new or changed advisories, only if you have those |
 | [Proxmox VE advisories](https://forum.proxmox.com/threads/proxmox-virtual-environment-security-advisories.149331/) | fixed package builds per Proxmox security advisory (PSA) | the whole forum thread once (~6 pages), then its last page, only if you run Proxmox VE |

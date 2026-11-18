@@ -22,6 +22,8 @@ exploitdb = true        # Exploit-DB index
 github_poc = true       # nomi-sec/PoC-in-GitHub, shallow git clone (~85 MB, needs git)
 distro = true           # Debian/Ubuntu trackers, only for releases your inventory runs
 # distro_releases = ["debian:12", "ubuntu:noble"]   # fetch these even if no host reports them
+# ubuntu_lookup = true  # ask Ubuntu's CVE tracker about fresh CVEs its OVAL feed doesn't list yet
+#                       # (sends those CVE IDs to ubuntu.com; off by default)
 freebsd = true          # FreeBSD VuXML for OPNsense packages and FreeBSD base releases
 osv = true              # OSV.dev advisories for Home Assistant Core (PyPI homeassistant)
 proxmox = true          # Proxmox VE's security advisories (PSAs) from its forum thread
