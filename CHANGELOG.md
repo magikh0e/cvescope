@@ -5,6 +5,8 @@ releases are on the [releases page](https://github.com/magikh0e/cvescope/release
 
 ## [Unreleased]
 
+## [0.2.8] - 2026-11-18
+
 ### Added
 - "A fix is out now" changes: when a finding goes from no fix yet (or no update planned) to fix
   available, the Changes tab and alerts say so, with what fixes it. `notify.fixes_min_tier`
@@ -14,6 +16,10 @@ releases are on the [releases page](https://github.com/magikh0e/cvescope/release
   is fixed in 3.5.10; NVD's versionEndExcluding; for records that list fixed versions and mark
   the rest affected, the next fixed release, preferring your version's line). They now read
   "fix available" instead of "not known".
+
+### Changed
+- CI: every GitHub Action is pinned to a commit SHA (the test workflow still used moving
+  tags), and Dependabot proposes updates to them once a month.
 
 ### Fixed
 - Windows: a `windows 11*` alias matched Microsoft's Hardware Lab Kit ("Windows 11 HLK 22H2"),
@@ -237,7 +243,8 @@ First release.
 - Act now / watch / info tiers, change events, and ntfy, Home Assistant and webhook alerts.
 - A local web page (127.0.0.1, Host header checked) and a CLI.
 
-[Unreleased]: https://github.com/magikh0e/cvescope/compare/v0.2.7...HEAD
+[Unreleased]: https://github.com/magikh0e/cvescope/compare/v0.2.8...HEAD
+[0.2.8]: https://github.com/magikh0e/cvescope/compare/v0.2.7...v0.2.8
 [0.2.7]: https://github.com/magikh0e/cvescope/compare/v0.2.6...v0.2.7
 [0.2.6]: https://github.com/magikh0e/cvescope/compare/v0.2.5...v0.2.6
 [0.2.5]: https://github.com/magikh0e/cvescope/compare/v0.2.4...v0.2.5
