@@ -5,6 +5,15 @@ releases are on the [releases page](https://github.com/magikh0e/cvescope/release
 
 ## [Unreleased]
 
+### Fixed
+- "Fix available" no longer counts a fix that isn't out yet. A CVE record can name its fixed
+  release ahead of time (OpenSSL's said "fixed in 3.5.10" while 3.5.9 was the newest 3.5
+  release), and so can VuXML. cvescope now checks that release against endoflife.date's newest
+  release on the same line (a new feed, `sources.endoflife`: one ~320 KB download covers every
+  product, so it says nothing about what you run). Until it's out, the finding reads "not
+  released yet" and counts as no fix yet; when it ships, it turns into fix available, with the
+  "a fix is out now" change and alert.
+
 ## [0.2.8] - 2026-11-18
 
 ### Added

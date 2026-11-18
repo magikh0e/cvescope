@@ -17,7 +17,7 @@ import re
 
 from . import db
 from .sources.cvelist import _cpe_vp
-from .versions import clean, cmp, desc_max, dpkg_cmp, eval_entry, name_pattern, pkg_cmp
+from .versions import clean, cmp, desc_max, dpkg_cmp, eval_entry, key, name_pattern, pkg_cmp
 
 
 def _alias(a: str) -> tuple[str, str, bool]:
@@ -562,6 +562,82 @@ def _apply_psa(con, it: dict, rows: dict) -> None:
         rows[(cve, it["id"])] = ("affected" if hit else "not_affected", "psa", why)
 
 
+def _release_lines(con) -> dict[tuple[str, str], list[tuple[str, str]]]:
+    """CPE (vendor, product) -> [(release line, newest release on it)], from endoflife.date."""
+    lines: dict[str, list] = {}
+    for prod, cycle, latest in con.execute("SELECT product, cycle, latest FROM eol_cycle"):
+        lines.setdefault(prod, []).append((cycle, latest))
+    out: dict[tuple[str, str], list] = {}
+    for vendor, product, prod in con.execute("SELECT vendor, cpe_product, product FROM eol_cpe"):
+        if prod in lines:
+            out.setdefault((vendor, product), []).extend(lines[prod])
+    return out
+
+
+def _on_line(v: str, line: str) -> bool:
+    return v == line or v.startswith(line + ".")
+
+
+def unreleased(fixed: str, lines) -> tuple[str, str] | None:
+    """(release line, newest release) when `fixed` is newer than every release out on its line.
+
+    None when it's out, or when the data can't say: no line it belongs to, or a newest release
+    less precise than the fix (endoflife.date lists FreeBSD 15.1, not its patch levels).
+    """
+    f = clean(fixed)
+    if not f:
+        return None
+    best = None
+    for line, latest in lines:
+        ln, lt = clean(line), clean(latest)
+        if not ln or not lt or not _on_line(f, ln) or not _on_line(lt, ln):
+            continue
+        if best is None or len(ln) > len(best[0]) or (len(ln) == len(best[0]) and cmp(lt, best[1]) > 0):
+            best = (ln, lt)
+    if best is None or len(key(best[1])) < len(key(f)):
+        return None
+    return best if cmp(f, best[1]) > 0 else None
+
+
+_FIXED_IN = re.compile(r"fixed in ([^\s,;()]+)")
+_PORT_REV = re.compile(r"(?:[_,]\d+)+$")  # FreeBSD port revision and epoch: 3.5.10_1,1
+
+
+def _apply_unreleased(items: list[dict], rows: dict, lines: dict) -> None:
+    """A fix the record names before it ships is no fix yet, not fix available.
+
+    OpenSSL's records said "fixed in 3.5.10" while 3.5.9 was the newest 3.5 release. When the
+    release comes out (endoflife.date lists it), the next match reads "fix available" again and
+    that change is the "a fix is out now" event.
+    """
+    if not lines:
+        return
+    per_item = {}
+    for it in items:
+        ls = []
+        for vendor, product, prefix in it.setdefault("_aliases", [_alias(a) for a in it["aliases"]]):
+            if not prefix and vendor != "*":
+                ls.extend(lines.get((vendor, product), []))
+        if ls:
+            per_item[it["id"]] = ls
+    if not per_item:
+        return
+    for k, (status, how, reason) in rows.items():
+        ls = per_item.get(k[1])
+        if not ls or status != "affected" or how not in ("product", "cpe", "nvd", "vuxml", "osv"):
+            continue
+        if "; update available: " in reason:  # OSV already knows of a newer release
+            continue
+        m = _FIXED_IN.search(reason)
+        if not m:
+            continue
+        fixed = _PORT_REV.sub("", m.group(1)) if how == "vuxml" else m.group(1)
+        u = unreleased(fixed, ls)
+        if u:
+            note = f" (not released yet: the newest {u[0]} release is {u[1]})"
+            rows[k] = (status, how, reason[:m.end()] + note + reason[m.end():])
+
+
 FIX_STATES = ("available", "none", "wontfix", "unknown")
 
 
@@ -569,7 +645,7 @@ def fix_state(status: str, how: str, detail: str | None) -> str:
     """Is there a fix you can install? Read from the reason the vendor-data steps above write.
 
     available  the vendor shipped a fixed version: update (or reboot, for a Proxmox kernel)
-    none       no fix released yet, or the vendor hasn't decided
+    none       no fix released yet (or the record names one that isn't out), or the vendor hasn't decided
     wontfix    the vendor plans no update for this release (minor issue, ignored, out of support)
     unknown    no vendor patch data: an upstream range that names no fix, a backported distro
                package no tracker answered, or a keyword match
@@ -579,6 +655,8 @@ def fix_state(status: str, how: str, detail: str | None) -> str:
     d = detail or ""
     if status not in ("affected", "check"):
         return "unknown"
+    if "(not released yet" in d:
+        return "none"  # _apply_unreleased: the record names a release that isn't out
     if how == "distro":
         if " is newer than " in d:
             return "available"
@@ -625,6 +703,7 @@ def run(con, cfg) -> str:
         _apply_vuxml(con, it, new_rows)
         _apply_osv(con, it, new_rows)
         _apply_psa(con, it, new_rows)
+    _apply_unreleased(items, new_rows, _release_lines(con))
 
     # keyword pass: only CVEs whose record names no product at all (mostly pre-2023 "n/a")
     kw_items = [(it, re.compile(r"\b(?:" + "|".join(re.escape(k) for k in it["keywords"]) + r")\b", re.I))

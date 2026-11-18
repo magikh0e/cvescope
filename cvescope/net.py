@@ -51,11 +51,20 @@ def _open(url: str, headers: dict | None = None, timeout: int = 120, tries: int 
     raise last  # type: ignore[misc]
 
 
-def get(url: str, etag: str | None = None, timeout: int = 120) -> tuple[bytes, str | None]:
-    """GET with If-None-Match. Raises NotModified when the etag still matches."""
+def get(url: str, etag: str | None = None, timeout: int = 120,
+        compressed: bool = False) -> tuple[bytes, str | None]:
+    """GET with If-None-Match. Raises NotModified when the etag still matches.
+
+    compressed asks for gzip on the wire (for big JSON the server compresses well).
+    """
     headers = {"If-None-Match": etag} if etag else {}
+    if compressed:
+        headers["Accept-Encoding"] = "gzip"
     with _open(url, headers, timeout) as r:
-        return r.read(), r.headers.get("ETag")
+        body = r.read()
+        if (r.headers.get("Content-Encoding") or "").lower() == "gzip":
+            body = gzip.decompress(body)
+        return body, r.headers.get("ETag")
 
 
 def get_since(url: str, since: str | None = None, timeout: int = 300) -> tuple[bytes, str | None]:

@@ -63,6 +63,16 @@ CREATE TABLE IF NOT EXISTS osv_pkg(
 CREATE TABLE IF NOT EXISTS psa(
   id TEXT PRIMARY KEY, rev INTEGER, date TEXT, title TEXT, cves TEXT, fixed TEXT, url TEXT, details TEXT) WITHOUT ROWID;
 
+-- endoflife.date: the newest release of each release line ("3.5" -> 3.5.9) per product, and the
+-- CPE vendor/product pairs that name each product. Tells a fix a CVE record announces ahead of
+-- the release ("fixed in 3.5.10") from one that's out.
+CREATE TABLE IF NOT EXISTS eol_cycle(
+  product TEXT, cycle TEXT, latest TEXT, latest_date TEXT,
+  PRIMARY KEY(product, cycle)) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS eol_cpe(
+  vendor TEXT, cpe_product TEXT, product TEXT,
+  PRIMARY KEY(vendor, cpe_product, product)) WITHOUT ROWID;
+
 -- Ubuntu's CVE tracker, one answer per CVE, for CVEs too fresh for Canonical's OVAL feed
 CREATE TABLE IF NOT EXISTS ubuntu_cve(
   cve_id TEXT PRIMARY KEY, fetched TEXT, found INTEGER, data TEXT) WITHOUT ROWID;

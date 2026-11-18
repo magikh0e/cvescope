@@ -153,14 +153,22 @@ by, and every report lists:
 
 | Fix | Means | Read from |
 |---|---|---|
-| **available** | The vendor shipped a fixed build: update (or reboot, for a Proxmox kernel already installed) | Debian/Ubuntu fix newer than installed, VuXML or OSV "fixed in", every Proxmox PSA, and for apps nobody backports to, the release the CVE record names as fixed ("< 3.5.10") |
-| **not yet** | No fix released, or the vendor hasn't decided | Debian/Ubuntu open, postponed, queued for a point release, not triaged |
+| **available** | The vendor shipped a fixed build: update (or reboot, for a Proxmox kernel already installed) | Debian/Ubuntu fix newer than installed, VuXML or OSV "fixed in", every Proxmox PSA, and for apps nobody backports to, the release the CVE record names as fixed ("< 3.5.10"), once that release is out |
+| **not yet** | No fix released, or the vendor hasn't decided | Debian/Ubuntu open, postponed, queued for a point release, not triaged; a fixed release a CVE record names that isn't out yet |
 | **not planned** | The vendor plans no update for this release | "no security update planned", "won't fix it", out of security support |
 | **not known** | No vendor patch data | Upstream ranges that name no fix, backported distro packages no tracker answered, keyword matches |
 
 When a fix ships for something you run (a finding goes from **not yet** or **not planned** to
 **available**), that's a change of its own: "fix available (glibc (web1)): Debian 13 fix
 2.41-12+deb13u1 is newer than 2.41-12". It shows in **Changes** and goes out as an alert.
+
+A CVE record can name its fix before the release ships: OpenSSL's records said "fixed in
+3.5.10" while 3.5.9 was still the newest 3.5 release. cvescope checks the release a record (or
+VuXML) names against [endoflife.date](https://endoflife.date/)'s newest release on that line.
+Until it's out, the finding reads "fixed in 3.5.10 (not released yet: the newest 3.5 release
+is 3.5.9)" and counts as **not yet**; when it ships, it turns **available** and that's a "fix
+available" change. This covers the products endoflife.date lists with a CPE name (OpenSSL,
+OPNsense, the Linux kernel, nginx, PHP, ...); for the rest, a named fix counts as out.
 
 ### FreeBSD and OPNsense packages
 
@@ -368,6 +376,7 @@ live in `cvescope/collectors/packages.py`; add your own per item with `aliases =
 | [FreeBSD VuXML](https://vuxml.freebsd.org/) | affected package builds and base-system patch levels, as `pkg audit` uses them | ~1.4 MB, only if you run OPNsense or FreeBSD |
 | [OSV.dev](https://osv.dev/) | advisories for Home Assistant Core and every SBOM language package (PyPI, npm, Maven, Go, ...) with the affected releases | one batch query per sync plus new or changed advisories, only if you have those |
 | [Proxmox VE advisories](https://forum.proxmox.com/threads/proxmox-virtual-environment-security-advisories.149331/) | fixed package builds per Proxmox security advisory (PSA) | the whole forum thread once (~6 pages), then its last page, only if you run Proxmox VE |
+| [endoflife.date](https://endoflife.date/) | the newest release of each release line, so a fix a CVE record names before it ships reads as not out yet | ~320 KB gzipped, only when it changes |
 
 ### Optional: NVD lookup
 
