@@ -74,12 +74,27 @@ def cmd_match(cfg, a):
 
 
 def cmd_report(cfg, a):
-    from . import query
+    from . import query, report
     con = _con(cfg)
     tiers = ["act", "watch", "info"]
     want = tiers[: tiers.index(a.tier) + 1]
+    if a.format != "text":
+        d = report.build(con, cfg, tiers=want, host=a.host, days=a.days, include_keyword=a.keyword)
+        text = report.render(d, a.format)
+        if a.out:
+            import datetime as dt
+            out = Path(dt.datetime.now().strftime(str(Path(a.out).expanduser())))  # ~/reports/cvescope-%Y-%m-%d.html
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_text(text, encoding="utf-8", newline="")
+            c = d["counts"]
+            print(f"wrote {out} ({c['act']} act now, {c['watch']} watch, {c['info']} info, {c['acked']} acknowledged)")
+        else:
+            sys.stdout.buffer.write(text.encode("utf-8"))
+        return 0
     rows = query.matches(con, cfg, tiers=want, include_keyword=a.keyword,
                          acked="include" if a.acked else "hide")
+    if a.host:
+        rows = [r for r in rows if (r.get("host") or "").lower() == a.host.strip().lower()]
     if not rows:
         print("nothing at or above tier", a.tier)
         return 0
@@ -252,11 +267,16 @@ def main(argv=None) -> int:
     s.set_defaults(fn=cmd_inventory)
     sub.add_parser("match", help="re-match CVEs against inventory").set_defaults(fn=cmd_match)
 
-    s = sub.add_parser("report", help="print matched CVEs by tier")
+    s = sub.add_parser("report", help="matched CVEs by tier, or a full report (--format html|md|csv|json)")
     s.add_argument("--tier", choices=["act", "watch", "info"], default="watch")
     s.add_argument("--keyword", action="store_true", help="include keyword-only matches")
     s.add_argument("-l", "--long", action="store_true")
-    s.add_argument("--acked", action="store_true", help="include acknowledged matches")
+    s.add_argument("--acked", action="store_true", help="include acknowledged matches (text format)")
+    s.add_argument("--format", choices=["text", "html", "md", "csv", "json"], default="text",
+                   help="text (default) lists findings; the others write a full report")
+    s.add_argument("--out", help="write the report here; strftime codes work: ~/reports/cvescope-%%Y-%%m-%%d.html")
+    s.add_argument("--host", help="only this host (as the page groups it)")
+    s.add_argument("--days", type=int, default=7, help="how far back the report's changes go (default 7)")
     s.set_defaults(fn=cmd_report)
 
     s = sub.add_parser("ack", help="acknowledge a CVE you've dealt with (hides it until the evidence gets worse)")

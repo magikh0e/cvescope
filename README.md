@@ -408,6 +408,31 @@ More of the same evidence (another GitHub PoC, EPSS moving within its tier) and 
 of the item, such as a monthly Windows build, don't bring it back. Each acknowledgement and
 removal is kept in the CVE's history. "Show acknowledged" on the page lists the hidden ones.
 
+## Reports
+
+A report puts it all in one place for someone else, or for later: the counts, the findings
+that need doing (with why they rank where they do and what fixes them), every host, what
+changed in the last days, what's acknowledged with its note and end date, and the blind spots
+(items without a version, failed collectors, feeds with errors).
+
+```
+cvescope report --format html --out ~/reports/cvescope-%Y-%m-%d.html
+cvescope report --format csv --tier info --host web1
+cvescope report --format md --days 30 > status.md
+```
+
+- `html` is one self-contained file without scripts; open it and print to PDF.
+- `md` pastes into a ticket, a wiki or a chat.
+- `csv` has one row per finding (acknowledged ones flagged) for a spreadsheet.
+- `json` is everything, for other tools.
+
+`--tier` sets which findings are listed (the counts always cover all of them), `--host` keeps
+one host, `--days` sets how far back the changes go, and `--out` accepts date codes, so a
+scheduled task can keep one report per week. On the page, the **report** links next to the
+filters give the same thing for what you're looking at: the host you picked, and info only
+when it's included. Feed text is escaped for each format, including spreadsheet formulas in
+CSV.
+
 ## Scheduling
 
 `--log FILE` appends everything a run prints to a file (rotated at 5 MB), which is what you want
@@ -453,6 +478,7 @@ cvescope sync [--only kev,epss,...] [--rebaseline] [--dry-run] [--no-notify]
 cvescope inventory            collect versions and print them
 cvescope match                re-match without fetching
 cvescope report [--tier act|watch|info] [--keyword] [--acked] [-l]
+cvescope report --format html|md|csv|json [--out PATH] [--host NAME] [--days N] [--tier ...]
 cvescope ack CVE-ID... [--item NAME] [-m NOTE] [--days N | --until YYYY-MM-DD]
 cvescope unack CVE-ID... [--item NAME]
 cvescope acks [--all]         acknowledgements and whether they still hold

@@ -11,12 +11,11 @@ can't acknowledge things behind your back. serve.read_only = true turns them off
 from __future__ import annotations
 
 import json
-import re
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from . import acks, db, query, vulnid
+from . import acks, db, query, report, vulnid
 
 WEB = Path(__file__).resolve().parent / "web"
 TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
@@ -49,18 +48,40 @@ def make_handler(cfg, allowed_hosts: set[str]):
         def log_message(self, *a):
             pass
 
-        def _send(self, code: int, body: bytes, ctype: str):
+        def _send(self, code: int, body: bytes, ctype: str, csp: str | None = None, headers: dict | None = None):
             self.send_response(code)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Referrer-Policy", "no-referrer")
-            self.send_header("Content-Security-Policy",
+            self.send_header("Content-Security-Policy", csp or
                              "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; "
                              "frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
+            for k, v in (headers or {}).items():
+                self.send_header(k, v)
             self.end_headers()
             self.wfile.write(body)
+
+        def _report(self, con, qs):
+            fmt = qs.get("format", "html")
+            tier = qs.get("tier", "watch")
+            if fmt not in report.FORMATS or tier not in report.TIERS:
+                return self._json({"error": "bad format or tier"}, 400)
+            try:
+                days = max(1, min(365, int(qs.get("days", "7") or 7)))
+            except ValueError:
+                return self._json({"error": "bad days"}, 400)
+            host = (qs.get("host") or "")[:200] or None
+            tiers = report.TIERS[: report.TIERS.index(tier) + 1]
+            d = report.build(con, cfg, tiers=tiers, host=host, days=days, include_keyword=qs.get("keyword") == "1")
+            body = report.render(d, fmt).encode("utf-8")
+            if fmt == "html":  # self-contained and script-free: inline styles only
+                return self._send(200, body, report.MIME[fmt],
+                                  csp="default-src 'none'; style-src 'unsafe-inline'; img-src data:; "
+                                      "frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
+            name = f"cvescope-report-{d['generated'][:10]}.{fmt}"
+            return self._send(200, body, report.MIME[fmt], headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
         def _json(self, obj, code=200):
             self._send(code, json.dumps(obj, default=str).encode(), "application/json")
@@ -177,6 +198,8 @@ def make_handler(cfg, allowed_hosts: set[str]):
             try:
                 if path == "/api/summary":
                     return self._json(query.summary(con, cfg))
+                if path == "/api/report":
+                    return self._report(con, qs)
                 if path == "/api/matches":
                     tiers = [t for t in qs.get("tiers", "act,watch").split(",") if t in query.TIER_ORDER]
                     return self._json(query.matches(con, cfg, tiers=tiers or ["act", "watch"],

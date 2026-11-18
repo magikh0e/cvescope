@@ -218,8 +218,22 @@ const SORTS = {
   epss: (a, b) => num(b.epss_pct) - num(a.epss_pct),
 };
 
+// report links follow the view: the picked host (or the picked item's host) and the tiers shown
+function updateReportLinks() {
+  const it = state.items.find((x) => x.id === state.item);
+  const q = new URLSearchParams({ tier: $("#fInfo").checked ? "info" : "watch", days: "7" });
+  const host = it ? it.host : state.host;
+  if (host) q.set("host", host);
+  if ($("#fKeyword").checked) q.set("keyword", "1");
+  for (const [id, fmt] of [["repHtml", "html"], ["repMd", "md"], ["repCsv", "csv"], ["repJson", "json"]]) {
+    q.set("format", fmt);
+    $("#" + id).href = "/api/report?" + q;
+  }
+}
+
 // host, text and sort apply to the rows already loaded: no round trip while typing
 function renderMatches() {
+  updateReportLinks();
   const it = state.items.find((x) => x.id === state.item);
   const text = $("#fText").value.trim().toLowerCase();
   let rows = state.rows;

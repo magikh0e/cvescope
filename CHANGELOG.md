@@ -6,6 +6,11 @@ releases are on the [releases page](https://github.com/magikh0e/cvescope/release
 ## [Unreleased]
 
 ### Added
+- Reports: `cvescope report --format html|md|csv|json` writes a full report (counts, findings
+  with their reasons and fixes, hosts, changes in the last `--days`, acknowledgements, blind
+  spots), for one `--host` or all of them, to stdout or `--out` (date codes allowed). The page
+  has report links that follow its host and tier filters, served by `/api/report`; the HTML
+  report runs no scripts and prints cleanly to PDF.
 - Findings without a CVE ID: Proxmox advisories that name no CVE (69 of 98 today) and GitHub/OSV
   advisories with no CVE (GHSA-, PYSEC-, GO-, RUSTSEC-, MAL- for malicious releases) are kept
   under their own ID and matched, ranked, acknowledged and alerted on like CVEs. The page links
