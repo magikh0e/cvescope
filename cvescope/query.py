@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import re
 
 from . import acks, db
 
@@ -12,6 +13,36 @@ TIER_ORDER = {"act": 0, "watch": 1, "info": 2}
 STATUS_ORDER = {"affected": 0, "check": 1, "keyword": 2, "not_affected": 3}
 SIG_LABEL = {"kev": "KEV", "msf": "Metasploit", "nuclei": "Nuclei", "edb": "Exploit-DB",
              "poc": "GitHub PoC", "local": "archive"}
+
+
+# Collectors name items "Product (where)": "OpenSSH (h0evpn)", "Linux kernel (VM 100 UnFi)".
+# The part in brackets is the host, unless it names a role on the collector's own box.
+_TYPE_NAME = {"homeassistant": "Home Assistant", "opnsense": "OPNsense", "unifi": "UniFi", "proxmox": "Proxmox",
+              "pihole": "Pi-hole", "osquery": "osquery", "docker": "Docker"}
+_ROLE = {"ha add-on", "opnsense base"}
+_PAREN = re.compile(r"\(([^()]+)\)\s*$")
+
+
+def _collector_host(collector: str) -> str:
+    typ, _, label = (collector or "").partition(":")
+    m = _PAREN.search(label)
+    if m:  # "Proxmox VE (PVE1)"
+        return m.group(1).strip()
+    if not label or "://" in label or re.fullmatch(r"\w+#\d+", label):  # a URL or an unnamed entry
+        return _TYPE_NAME.get(typ, typ or "unknown")
+    return label
+
+
+def host_of(name: str, collector: str) -> str:
+    """Which machine an item lives on, for grouping and filtering the page."""
+    base = _collector_host(collector)
+    m = _PAREN.search(name or "")
+    if not m:
+        return base
+    p = m.group(1).strip()
+    if p.lower() in _ROLE or p.lower().startswith(base.lower()):
+        return base
+    return p
 
 
 def signals_for(con, ids) -> dict[str, dict[str, list]]:
@@ -70,7 +101,7 @@ def matches(con, cfg, tiers=("act", "watch", "info"), include_keyword=False, ite
     """Matched CVEs with tier and reasons. acked: "hide" drops acknowledged matches (lapsed and
     expired ones stay), "include" keeps them, "only" returns just those."""
     q = ("SELECT m.cve_id, m.item_id, m.status, m.how, m.detail, m.first_seen, i.name AS item_name, "
-         "i.version AS item_version, i.extra AS item_extra, c.title, c.description, c.cvss, c.severity, "
+         "i.version AS item_version, i.extra AS item_extra, i.collector AS item_collector, c.title, c.description, c.cvss, c.severity, "
          "c.published, c.ssvc_exploitation, c.ssvc_automatable, c.ssvc_impact, e.pct AS epss_pct, "
          "e.score AS epss "
          "FROM match m JOIN item i ON i.id=m.item_id JOIN cve c ON c.id=m.cve_id "
@@ -95,6 +126,7 @@ def matches(con, cfg, tiers=("act", "watch", "info"), include_keyword=False, ite
         s = sigs.get(r["cve_id"], {})
         t, why = tier(s, r, r["epss_pct"], cfg)
         backports = json.loads(r.pop("item_extra") or "{}").get("backports")
+        r["host"] = host_of(r["item_name"], r.pop("item_collector"))
         # A "check" on a distro or vendor build (Proxmox kernel, FreeBSD base, a dpkg package no
         # tracker answered) means "upstream says affected, the vendor may have patched it". A PoC
         # or a high EPSS isn't enough to bother anyone with that; real exploitation (act) is.
@@ -277,6 +309,7 @@ def summary(con, cfg) -> dict:
         it["counts"] = per.get(it["id"], {"act": 0, "watch": 0, "info": 0, "affected": 0})
         it["ruled_out"] = nots.get(it["id"], 0)
         it["extra"] = json.loads(it["extra"] or "{}")
+        it["host"] = host_of(it["name"], it["collector"])
     src = [dict(r) for r in con.execute("SELECT name,last_ok,last_try,last_error FROM source ORDER BY name")]
     totals = {"act": 0, "watch": 0, "info": 0, "acked": n_acked}
     for m in ms:

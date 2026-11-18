@@ -25,6 +25,11 @@
       <h2>Inventory</h2>
       <button class="linkish" id="allItems" type="button">all</button>
     </div>
+    <div class="inv-tools">
+      <input id="invFilter" type="search" placeholder="filter: name, host, version" autocomplete="off" aria-label="Filter the inventory">
+      <label>group <select id="invGroup"><option value="host">host</option><option value="source">source</option><option value="none">none</option></select></label>
+      <label>sort <select id="invSort"><option value="risk">exposure</option><option value="name">name</option></select></label>
+    </div>
     <ul id="items"></ul>
     <div class="feeds" id="feeds"></div>
   </aside>
@@ -38,6 +43,11 @@
     </nav>
 
     <section id="exposure" class="pane on">
+      <div class="filters narrow">
+        <label>host <select id="fHost"><option value="">all hosts</option></select></label>
+        <input id="fText" type="search" placeholder="filter: CVE, title, item" autocomplete="off" aria-label="Filter the matches">
+        <label>sort <select id="fSort"><option value="tier">tier</option><option value="new">newest</option><option value="cvss">CVSS</option><option value="epss">EPSS</option></select></label>
+      </div>
       <div class="filters">
         <label><input type="checkbox" id="fInfo"> include info (no known exploit)</label>
         <label><input type="checkbox" id="fKeyword"> include keyword-only matches</label>

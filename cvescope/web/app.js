@@ -2,8 +2,18 @@
 // cvescope local page. Every string from feeds is untrusted: DOM is built with textContent only.
 
 const $ = (s) => document.querySelector(s);
-const state = { item: null, current: null, items: [], readOnly: false, acked: 0 };
+const state = { item: null, host: null, current: null, items: [], rows: [], readOnly: false, acked: 0 };
+
+// view choices remembered per browser; storage can be missing (private window), so never rely on it
+const PREFS = ["invGroup", "invSort", "fSort"];
+function loadPrefs() {
+  for (const k of PREFS) {
+    try { const v = localStorage.getItem("cvescope." + k); if (v && $("#" + k).querySelector(`option[value="${v}"]`)) $("#" + k).value = v; } catch { /* ignore */ }
+  }
+}
+function savePref(k) { try { localStorage.setItem("cvescope." + k, $("#" + k).value); } catch { /* ignore */ } }
 const TIER = { act: "Act now", watch: "Watch", info: "Info" };
+const TIER_RANK = { act: 0, watch: 1, info: 2 };
 const SIG = { kev: "KEV", msf: "Metasploit", nuclei: "Nuclei", edb: "Exploit-DB", poc: "GitHub PoC", local: "archive" };
 
 function h(tag, attrs, ...kids) {
@@ -55,31 +65,69 @@ async function loadSummary() {
     h("button", { class: "total info", type: "button", title: "Matches with no known exploit", onclick: () => showTiers(true) }, `${s.totals.info} info`),
   );
   renderHealth(s.health);
-  const ul = $("#items");
-  ul.replaceChildren();
-  let group = null;
-  for (const it of s.items) {
-    const g = it.collector.split(":")[0];
-    if (g !== group) { group = g; ul.append(h("li", { class: "group", text: g })); }
-    const c = it.counts;
-    const badges = h("span", { class: "badges" },
-      c.act ? h("span", { class: "badge act", title: "act now", text: c.act }) : null,
-      c.watch ? h("span", { class: "badge watch", title: "watch", text: c.watch }) : null,
-      !c.act && !c.watch ? h("span", { class: "badge ok", title: `${it.ruled_out} CVEs ruled out by version`, text: "✓" }) : null);
-    const hint = it.extra && (it.extra.hint || it.extra.note);
-    const li = h("li", { "data-id": it.id, title: it.error || hint || `${it.ruled_out} CVEs ruled out by version`, onclick: () => selectItem(it.id) },
-      h("span", { class: "name", text: it.name }), badges,
-      h("span", { class: "ver", text: it.version || "version unknown" }),
-      it.error ? h("span", { class: "err", text: "collector failed: last known version" }) : null,
-      !it.error && hint ? h("span", { class: "hint", text: hint }) : null);
-    if (state.item === it.id) li.classList.add("on");
-    ul.append(li);
-  }
+  renderInventory();
+  const hosts = [...new Set(s.items.map((it) => it.host))].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+  $("#fHost").replaceChildren(h("option", { value: "", text: "all hosts" }), ...hosts.map((x) => h("option", { value: x, text: x })));
+  $("#fHost").value = state.host || "";
   const f = $("#feeds");
   f.replaceChildren(h("h3", { text: "Feeds" }), ...s.sources.map((x) =>
     h("div", { title: x.last_error || "" }, h("span", { text: x.name }),
       h("span", { class: x.last_error ? "err" : "muted", text: x.last_error ? "error" : day(x.last_ok) }))),
     h("div", {}, h("span", { class: "muted", text: `${s.cves.toLocaleString()} CVEs` }), h("span", { class: "muted", text: s.epss_date ? "EPSS " + s.epss_date : "" })));
+}
+
+const byName = (a, b) => a.localeCompare(b, undefined, { sensitivity: "base", numeric: true });
+const byRisk = (a, b) => b.act - a.act || b.watch - a.watch || b.info - a.info;
+const sumCounts = (its) => its.reduce((t, it) => ({ act: t.act + it.counts.act, watch: t.watch + it.counts.watch, info: t.info + it.counts.info }),
+  { act: 0, watch: 0, info: 0 });
+
+function riskBadges(c, okTitle) {
+  return h("span", { class: "badges" },
+    c.act ? h("span", { class: "badge act", title: "act now", text: c.act }) : null,
+    c.watch ? h("span", { class: "badge watch", title: "watch", text: c.watch }) : null,
+    !c.act && !c.watch && okTitle ? h("span", { class: "badge ok", title: okTitle, text: "✓" }) : null);
+}
+
+function itemRow(it) {
+  const hint = it.extra && (it.extra.hint || it.extra.note);
+  const li = h("li", { "data-id": it.id, title: it.error || hint || `${it.ruled_out} CVEs ruled out by version`, onclick: () => selectItem(it.id) },
+    h("span", { class: "name", text: it.name }), riskBadges(it.counts, `${it.ruled_out} CVEs ruled out by version`),
+    h("span", { class: "ver", text: it.version || "version unknown" }),
+    it.error ? h("span", { class: "err", text: "collector failed: last known version" }) : null,
+    !it.error && hint ? h("span", { class: "hint", text: hint }) : null);
+  if (state.item === it.id) li.classList.add("on");
+  return li;
+}
+
+function renderInventory() {
+  const ul = $("#items");
+  const f = $("#invFilter").value.trim().toLowerCase();
+  const group = $("#invGroup").value, sort = $("#invSort").value;
+  const items = state.items.filter((it) => !f || [it.name, it.host, it.version, it.collector]
+    .some((x) => x && String(x).toLowerCase().includes(f)));
+  const order = sort === "risk" ? (a, b) => byRisk(a.counts, b.counts) || byName(a.name, b.name) : (a, b) => byName(a.name, b.name);
+  const keyOf = group === "host" ? (it) => it.host : group === "source" ? (it) => it.collector.split(":")[0] : () => "";
+  const groups = new Map();
+  for (const it of items) {
+    const k = keyOf(it);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(it);
+  }
+  const keys = [...groups.keys()].sort(sort === "risk"
+    ? (a, b) => byRisk(sumCounts(groups.get(a)), sumCounts(groups.get(b))) || byName(a, b) : byName);
+  const out = [];
+  for (const k of keys) {
+    const its = groups.get(k).sort(order);
+    if (group === "host") {
+      out.push(h("li", { class: `group pick${state.host === k ? " on" : ""}`, "data-host": k, title: `Show only ${k}`, onclick: () => selectHost(k) },
+        h("span", { class: "gname", text: k }), riskBadges(sumCounts(its)), h("span", { class: "gcount", text: `${its.length} item${its.length === 1 ? "" : "s"}` })));
+    } else if (group === "source") {
+      out.push(h("li", { class: "group", text: k }));
+    }
+    out.push(...its.map(itemRow));
+  }
+  if (!items.length) out.push(h("li", { class: "group", text: `nothing matches “${f}”` }));
+  ul.replaceChildren(...out);
 }
 
 // ---------- sync health ----------
@@ -102,15 +150,30 @@ function renderHealth(hl) {
   banner.hidden = false;
 }
 
+function markSelection() {
+  for (const li of document.querySelectorAll("#items li[data-id]")) li.classList.toggle("on", li.dataset.id === state.item);
+  for (const li of document.querySelectorAll("#items li[data-host]")) li.classList.toggle("on", !state.item && li.dataset.host === state.host);
+  $("#fHost").value = state.item ? "" : state.host || "";
+}
+
 function selectItem(id) {
   state.item = state.item === id ? null : id;
-  for (const li of document.querySelectorAll("#items li[data-id]")) li.classList.toggle("on", li.dataset.id === state.item);
+  state.host = null;
+  markSelection();
+  tab("exposure");
+  loadMatches();
+}
+
+function selectHost(host) {
+  state.host = state.host === host ? null : host || null;
+  state.item = null;
+  markSelection();
   tab("exposure");
   loadMatches();
 }
 
 // ---------- exposure ----------
-function showTiers(info) { $("#fInfo").checked = info; state.item = null; selectItem(null); }
+function showTiers(info) { $("#fInfo").checked = info; state.item = null; state.host = null; selectItem(null); }
 
 const sigKeys = (s) => Object.keys(SIG).filter((k) => s && s[k]);  // fixed order: KEV first
 
@@ -129,6 +192,7 @@ function matchRow(m) {
       h("span", { class: `pill ${m.status}`, text: m.status }),
       acked ? h("span", { class: "pill acked", title: ackLine(a), text: "acknowledged" }) : null,
       h("span", { text: `${m.item_name}${m.item_version ? " " + m.item_version : ""}` }),
+      m.host && !m.item_name.includes(m.host) ? h("span", { class: "host", text: "on " + m.host }) : null,
       ...sig.map((k) => h("span", { class: `chip ${k}`, text: SIG[k] + (m.signals[k] > 1 ? " ×" + m.signals[k] : "") })),
       h("span", { text: "published " + day(m.published) })),
     why || (a && !acked) ? h("span", { class: "why" }, why, a && !acked ? h("span", { class: "ackwarn", text: ackLine(a) }) : null) : null);
@@ -138,17 +202,48 @@ async function loadMatches() {
   const tiers = $("#fInfo").checked ? "act,watch,info" : "act,watch";
   const q = new URLSearchParams({ tiers, keyword: $("#fKeyword").checked ? "1" : "0", acked: $("#fAcked").checked ? "1" : "0" });
   if (state.item) q.set("item", state.item);
-  const rows = await api("/api/matches?" + q);
+  state.rows = await api("/api/matches?" + q);
+  renderMatches();
+}
+
+const num = (v) => (v == null ? -1 : Number(v));
+const SORTS = {
+  tier: null,  // the server's order: tier, then evidence
+  new: (a, b) => String(b.published || "").localeCompare(String(a.published || "")),
+  cvss: (a, b) => num(b.cvss) - num(a.cvss),
+  epss: (a, b) => num(b.epss_pct) - num(a.epss_pct),
+};
+
+// host, text and sort apply to the rows already loaded: no round trip while typing
+function renderMatches() {
   const it = state.items.find((x) => x.id === state.item);
-  $("#filterNote").textContent = it ? `showing ${it.name} only` : "";
+  const text = $("#fText").value.trim().toLowerCase();
+  let rows = state.rows;
+  if (!it && state.host) rows = rows.filter((m) => m.host === state.host);
+  if (text) rows = rows.filter((m) => [m.cve_id, m.title, m.description, m.item_name, m.host, m.status]
+    .some((x) => x && String(x).toLowerCase().includes(text)));
+  const sort = SORTS[$("#fSort").value];
+  if (sort) rows = [...rows].sort((a, b) => sort(a, b) || (TIER_RANK[a.tier] - TIER_RANK[b.tier]));
+  const scope = it ? it.name : state.host;
+  const note = $("#filterNote");
+  note.replaceChildren();
+  if (scope || text) {
+    note.append(`showing ${rows.length} of ${state.rows.length}${scope ? " for " + scope : ""}${text ? ` matching “${text}”` : ""} `,
+      h("button", { class: "linkish", type: "button", text: "clear", onclick: clearFilters }));
+  }
   const list = $("#matchList");
-  if (!rows.length) {
-    list.replaceChildren(empty(it ? `Nothing ${$("#fInfo").checked ? "" : "exploited or likely "}matches ${it.name} ${it.version || ""}. ${it.ruled_out} CVEs were ruled out by version.`
+  if (rows.length) { list.replaceChildren(...rows.map(matchRow)); return; }
+  if (text && state.rows.length) { list.replaceChildren(empty(`Nothing here matches “${text}”.`)); return; }
+  const info = $("#fInfo").checked;
+  list.replaceChildren(empty(it ? `Nothing ${info ? "" : "exploited or likely "}matches ${it.name} ${it.version || ""}. ${it.ruled_out} CVEs were ruled out by version.`
+    : state.host ? `Nothing ${info ? "" : "exploited or likely "}matches anything on ${state.host}.${info ? "" : " Tick “include info” to see the rest."}`
       : "No exploited or likely CVEs match your inventory right now. Tick “include info” to see the rest."
         + (state.acked && !$("#fAcked").checked ? ` ${state.acked} acknowledged ${state.acked === 1 ? "one is" : "ones are"} hidden.` : "")));
-    return;
-  }
-  list.replaceChildren(...rows.map(matchRow));
+}
+
+function clearFilters() {
+  $("#fText").value = "";
+  if (state.item || state.host) { state.item = null; state.host = null; markSelection(); loadMatches(); } else renderMatches();
 }
 
 // ---------- detail ----------
@@ -329,13 +424,19 @@ $("#fKeyword").addEventListener("change", loadMatches);
 $("#fAcked").addEventListener("change", loadMatches);
 $("#days").addEventListener("change", loadEvents);
 $("#fAllEvents").addEventListener("change", loadEvents);
-$("#allItems").addEventListener("click", () => { state.item = null; selectItem(null); });
+$("#allItems").addEventListener("click", () => { state.item = null; state.host = null; selectItem(null); });
+$("#invFilter").addEventListener("input", renderInventory);
+for (const k of ["invGroup", "invSort"]) $("#" + k).addEventListener("change", () => { savePref(k); renderInventory(); });
+$("#fHost").addEventListener("change", (e) => { state.host = null; selectHost(e.target.value || null); });
+$("#fText").addEventListener("input", renderMatches);
+$("#fSort").addEventListener("change", () => { savePref("fSort"); renderMatches(); });
 $("#closeDetail").addEventListener("click", closeDetail);
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !e.target.closest(".ackform")) closeDetail(); });
 $("#searchForm").addEventListener("submit", (e) => { e.preventDefault(); const q = $("#q").value.trim(); if (q.length >= 3) doSearch(q); });
 
 (async () => {
   try {
+    loadPrefs();
     await loadSummary();
     await loadMatches();
     const m = /^#(CVE-\d{4}-\d{4,7})$/i.exec(location.hash);

@@ -6,6 +6,10 @@ releases are on the [releases page](https://github.com/magikh0e/cvescope/release
 ## [Unreleased]
 
 ### Added
+- The page's inventory can be filtered (name, host, version), grouped by host or by source,
+  and sorted by exposure or name. Clicking a host shows only its matches. The match list has
+  a host picker, a text filter (CVE ID, title, item) and sorting by tier, newest, CVSS or EPSS.
+  Each match says which host it's on; the choices are remembered per browser.
 - Acknowledgements: `cvescope ack` / `unack` / `acks`, and an Acknowledge button in the CVE
   panel. An acknowledged match leaves act now, watch, the counts and alerts, and comes back by
   itself when an optional end date passes or the evidence gets worse (a higher tier, a new kind
