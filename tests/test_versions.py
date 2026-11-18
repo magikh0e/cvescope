@@ -104,3 +104,15 @@ class Description(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OtherDistroText(unittest.TestCase):
+    def test_distro_release_numbers_are_not_product_versions(self):
+        # CVE-2020-14312: dnsmasq's default config as Fedora < 31 and RHEL shipped it
+        e = {"p": "dnsmasq", "v": "n/a", "vs": [{"status": "affected", "version": "Fedora version prior to 31"},
+                                                {"status": "affected", "version": "all RHEL versions"}]}
+        self.assertEqual(eval_entry(e, "2.93")[0], "unknown")
+
+    def test_the_distro_itself_still_counts(self):
+        e = {"p": "Fedora", "v": "Fedora Project", "vs": [{"status": "affected", "version": "prior to 31"}]}
+        self.assertEqual(eval_entry(e, "30")[0], "affected")

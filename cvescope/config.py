@@ -26,6 +26,7 @@ DEFAULTS = {
         "local_archive": [],
         "distro": True,
         "distro_releases": [],
+        "freebsd": True,
     },
     "notify": {
         "min_tier": "act",

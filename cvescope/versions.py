@@ -136,6 +136,108 @@ def dpkg_cmp(a: str, b: str) -> int:
 _OP = re.compile(r"(<=|=<|>=|<|>|\bbefore\b|\bprior to\b|\bthrough\b|\bup to\b|\bearlier than\b|\bbelow\b)")
 
 
+# ---- FreeBSD pkg versions -------------------------------------------------------------
+# A port of pkg(8)'s pkg_version_cmp (libpkg/pkg_version.c, BSD-2-Clause; Oliver Eikemeier,
+# after Jeremy D. Lea), so VuXML ranges compare exactly the way `pkg audit` compares them.
+# ${PORTVERSION}[_${PORTREVISION}][,${PORTEPOCH}]: epoch first, then version, then revision.
+
+_DIG = "0123456789"
+_ALPHA = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+_ABASE = 2
+_PKG_STAGES = (("pl", 0), ("snap", ord("s") - ord("a") + _ABASE), ("alpha", _ABASE),
+               ("beta", 1 + _ABASE), ("pre", ord("p") - ord("a") + _ABASE), ("rc", ord("r") - ord("a") + _ABASE))
+
+
+def _lead_int(s: str) -> int:
+    m = re.match(r"\d+", s)
+    return int(m.group()) if m else 0
+
+
+def _pkg_split(v: str) -> tuple[str, int, int]:
+    """'1.9.17p2_4,1' -> ('1.9.17p2', epoch 1, revision 4)."""
+    v = v[v.rfind("-") + 1:]
+    us = v.rfind("_")
+    rev = _lead_int(v[us + 1:]) if us >= 0 else 0
+    cm = v.rfind(",", us + 1 if us >= 0 else 0)
+    epoch = _lead_int(v[cm + 1:]) if cm >= 0 else 0
+    end = us if us >= 0 else (cm if cm >= 0 else len(v))
+    return v[:end], epoch, rev
+
+
+def _pkg_component(s: str, pos: int) -> tuple[tuple[int, int, int], int]:
+    n, hasstage, haspl = len(s), False, False
+    if pos < n and s[pos] in _DIG:
+        j = pos
+        while j < n and s[j] in _DIG:
+            j += 1
+        num, pos = int(s[pos:j]), j
+    elif pos < n and s[pos] == "*":
+        num = -2
+        pos += 1
+        while pos < n and s[pos] != "+":
+            pos += 1
+    else:
+        num, hasstage = -1, True
+    a = 0
+    if pos < n and s[pos] in _ALPHA:
+        c = s[pos].lower()
+        haspl = True
+        if pos + 1 < n and s[pos + 1] in _ALPHA:
+            for name, value in _PKG_STAGES:
+                end = pos + len(name)
+                if s[pos:end].lower() == name and not (end < n and s[end] in _ALPHA):
+                    if hasstage:
+                        a, pos = value, end
+                    else:  # a number then "alpha": a dot goes in between
+                        a, haspl = 0, False
+                    c = ""
+                    break
+        if c:  # other words sort by their first letter
+            a = ord(c) - ord("a") + _ABASE
+            pos += 1
+            while pos < n and s[pos] in _ALPHA:
+                pos += 1
+    pl = 0
+    if haspl:
+        if pos < n and s[pos] in _DIG:
+            j = pos
+            while j < n and s[j] in _DIG:
+                j += 1
+            pl, pos = int(s[pos:j]), j
+        else:
+            pl = -1
+    while pos < n and s[pos] not in _DIG and s[pos] not in _ALPHA and s[pos] not in "+*":
+        pos += 1
+    return (num, a, pl), pos
+
+
+def pkg_cmp(a: str, b: str) -> int:
+    """FreeBSD package version order: -1, 0 or 1, as pkg(8) decides it."""
+    v1, e1, r1 = _pkg_split(a)
+    v2, e2, r2 = _pkg_split(b)
+    if e1 != e2:
+        return -1 if e1 < e2 else 1
+    result = 0
+    if v1.lower() != v2.lower():
+        p1 = p2 = 0
+        while result == 0 and (p1 < len(v1) or p2 < len(v2)):
+            c1 = c2 = (0, 0, 0)
+            block1 = not (p1 < len(v1) and v1[p1] != "+")
+            block2 = not (p2 < len(v2) and v2[p2] != "+")
+            if not block1:
+                c1, p1 = _pkg_component(v1, p1)
+            if not block2:
+                c2, p2 = _pkg_component(v2, p2)
+            if block1 and block2:
+                p1 += p1 < len(v1)
+                p2 += p2 < len(v2)
+            elif c1 != c2:
+                result = -1 if c1 < c2 else 1
+    if result == 0 and r1 != r2:
+        result = -1 if r1 < r2 else 1
+    return result
+
+
 def _text_range(s: str):
     s = s.strip().lower()
     m = _OP.search(s)
@@ -256,6 +358,12 @@ def desc_max(desc: str, patterns) -> str | None:
     return _max(found)
 
 
+# "Fedora version prior to 31", "all RHEL versions": a distro's own release numbers, not the
+# product's. They describe how that distro shipped it, so they say nothing about your build.
+_DISTRO_WORDS = re.compile(r"\b(?:fedora|rhel|red hat|enterprise linux|centos|rocky linux|almalinux|"
+                           r"ubuntu|debian|suse|sles|opensuse|amazon linux|alpine|oracle linux)\b", re.I)
+
+
 def eval_entry(entry: dict, version: str | None) -> tuple[str, str]:
     """Evaluate one compact affected[] entry for an installed version.
 
@@ -267,6 +375,7 @@ def eval_entry(entry: dict, version: str | None) -> tuple[str, str]:
     hits: list[str] = []
     parseable = False
     listed_unaffected = False
+    other_distro_ok = bool(_DISTRO_WORDS.search(f"{entry.get('v') or ''} {entry.get('p') or ''}"))
     for r in entry.get("vs") or []:
         if (r.get("status") or "").lower() == "unaffected":
             listed_unaffected = True
@@ -281,6 +390,8 @@ def eval_entry(entry: dict, version: str | None) -> tuple[str, str]:
                 fixed = f"{start}-{val.strip()}"
                 lt, lte = (fixed, None) if name == "lt" else (None, fixed)
         if lt is None and lte is None:
+            if _DISTRO_WORDS.search(str(start or "")) and not other_distro_ok:
+                continue
             rngs = _text_ranges(str(start or ""))
             if rngs:
                 outs = [_in(ver, lo, hi, inc) for lo, hi, inc in rngs]

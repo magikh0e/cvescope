@@ -16,7 +16,7 @@ import re
 
 from . import db
 from .sources.cvelist import _cpe_vp
-from .versions import clean, cmp, desc_max, dpkg_cmp, eval_entry, name_pattern
+from .versions import clean, cmp, desc_max, dpkg_cmp, eval_entry, name_pattern, pkg_cmp
 
 
 def _alias(a: str) -> tuple[str, str, bool]:
@@ -239,6 +239,88 @@ def _apply_distro(con, it: dict, rows: dict) -> None:
                                          f"{label} doesn't list it for {pkg} (not affected or not shipped)")
 
 
+# OPNsense's name for what FreeBSD ports (and so VuXML) call plain "openssl" (the 3.5 LTS)
+_PORT_SAME = {"openssl35": "openssl"}
+_BASE = re.compile(r"^(\d+\.\d+)-RELEASE(?:-p(\d+))?\b")
+
+
+def _base_pkgver(v: str) -> str | None:
+    """'15.1-RELEASE-p6' -> '15.1_6', the form VuXML uses for the base system."""
+    m = _BASE.match(v or "")
+    if not m:
+        return None
+    return m.group(1) + (f"_{m.group(2)}" if m.group(2) else "")
+
+
+def _no_epoch(v: str) -> str:
+    return v.split(",")[0]
+
+
+def _vuxml_check(ver: str, ranges, alias: bool) -> tuple[bool, str | None]:
+    """(version inside a range?, the fix version that applies to it, if one can be named)."""
+    fixed = None
+    ops = {"lt": lambda c: c < 0, "le": lambda c: c <= 0, "eq": lambda c: c == 0,
+           "ge": lambda c: c >= 0, "gt": lambda c: c > 0}
+    for r in ranges:
+        conds = [(op, _no_epoch(b) if alias else b) for op, b in r if op in ops and b]
+        if not conds:
+            continue
+        if all(ops[op](pkg_cmp(ver, b)) for op, b in conds):
+            return True, next((b for op, b in conds if op in ("lt", "le")), None)
+        lower_ok = all(ops[op](pkg_cmp(ver, b)) for op, b in conds if op in ("ge", "gt", "eq"))
+        if lower_ok:
+            fixed = next((b for op, b in conds if op == "lt"), fixed)
+    return False, fixed
+
+
+def _apply_vuxml(con, it: dict, rows: dict) -> None:
+    """FreeBSD packages (OPNsense) and FreeBSD base releases: let VuXML decide what it lists.
+
+    A CVE VuXML lists for the package is affected when the installed build is inside one of its
+    ranges and not_affected otherwise. VuXML doesn't cover every CVE a port could be hit by, so
+    CVEs it doesn't list keep the upstream answer.
+    """
+    ex = it.get("extra") or {}
+    if ex.get("pkgdb") == "freebsd" and ex.get("package") and ex.get("package_version"):
+        pkg, ver = ex["package"], ex["package_version"]
+        names = [(pkg, False)] + ([(_PORT_SAME[pkg], True)] if pkg in _PORT_SAME else [])
+        label = f"FreeBSD VuXML ({pkg})"
+    elif ex.get("freebsd_base"):
+        ver = _base_pkgver(it.get("version") or "")
+        if not ver:
+            return
+        names = [("FreeBSD", False), ("FreeBSD-kernel", False)]
+        label = "FreeBSD VuXML (base system)"
+    else:
+        return
+    found: dict[str, tuple] = {}
+    for name, alias in names:
+        for cve, ranges, sa in con.execute("SELECT cve_id, ranges, sa FROM vuxml WHERE package=?", (name,)):
+            hit, fixed = _vuxml_check(ver, json.loads(ranges), alias)
+            prev = found.get(cve)
+            if prev is None or (hit and not prev[0]) or (hit == prev[0] and fixed and not prev[1]):
+                found[cve] = (hit, fixed, sa)
+    if not found:
+        return
+    ids = list(found)
+    known = set()
+    for i in range(0, len(ids), 500):
+        chunk = ids[i:i + 500]
+        known.update(r[0] for r in con.execute(
+            f"SELECT id FROM cve WHERE state='PUBLISHED' AND id IN ({','.join('?' * len(chunk))})", chunk))
+    for cve, (hit, fixed, sa) in found.items():
+        key = (cve, it["id"])
+        if cve not in known:
+            continue
+        adv = f" {sa}" if sa else ""
+        if hit:
+            fix = f"fixed in {fixed}, " if fixed else ""
+            rows[key] = ("affected", "vuxml", f"{label}{adv}: {fix}installed {ver}")
+        elif key in rows:  # only overrule an upstream match; don't add thousands of old misses
+            why = f"fixed in {fixed}" if fixed else "outside the affected versions"
+            rows[key] = ("not_affected", "vuxml", f"{label}{adv}: {why}, installed {ver}")
+
+
 def run(con, cfg) -> str:
     items = []
     for r in con.execute("SELECT * FROM item"):
@@ -267,6 +349,7 @@ def run(con, cfg) -> str:
                 status, how, reason = evaluate(it, row)
                 new_rows[(row["id"], it["id"])] = (status, how, reason)
         _apply_distro(con, it, new_rows)
+        _apply_vuxml(con, it, new_rows)
 
     # keyword pass: only CVEs whose record names no product at all (mostly pre-2023 "n/a")
     kw_items = [(it, re.compile(r"\b(?:" + "|".join(re.escape(k) for k in it["keywords"]) + r")\b", re.I))

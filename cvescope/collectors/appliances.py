@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 
 from .. import db, net
 from ..config import expand
@@ -67,7 +68,7 @@ def _guest_os(info: dict, label: str) -> list[dict]:
     kr = info.get("kernel-release") or ""
     out = []
     if gid == "freebsd":
-        out.append(item(f"{pretty} ({label})", "freebsd", "freebsd", kr or ver, backports=True))
+        out.append(item(f"{pretty} ({label})", "freebsd", "freebsd", kr or ver, backports=True, freebsd_base=True))
     elif gid == "haos":
         out.append(item(f"Home Assistant OS ({label})", "home assistant", "operating system", ver,
                         aliases=["home assistant:home assistant operating system", "home assistant:os"]))
@@ -237,35 +238,47 @@ def _opn_creds(e: dict) -> tuple[str, str]:
 
 def opnsense(e: dict) -> list[dict]:
     """url, key_file + secret_file (or credentials_json [+ profile]), pin_sha256.
-    packages = true (default) adds the base-system daemons that matter (OpenSSH, Unbound, ...)."""
+    packages = true (default) adds the base-system daemons that matter (OpenSSH, Unbound, ...);
+    packages = "all" adds every installed package. Package builds and the FreeBSD base release
+    are checked against FreeBSD's VuXML (the data `pkg audit` uses)."""
     c = _client(e)
     k, s = _opn_creds(e)
     h = {"Authorization": "Basic " + base64.b64encode(f"{k}:{s}".encode()).decode()}
     info = c.get("/api/core/firmware/info", h)
     ver = packages.pkg_version(info.get("product_version") or (info.get("product") or {}).get("product_version", ""))
+    installed = {p["name"]: p["version"] for p in info.get("package") or [] if str(p.get("installed")) == "1"}
     out = [item(e.get("name") or "OPNsense", "opnsense", "opnsense", ver,
                 aliases=["deciso:opnsense", "opnsense:core", "deciso b v:opnsense"], keywords=["OPNsense"])]
+    seen = set()
     try:
         si = c.get("/api/diagnostics/system/system_information", h)
         for line in si.get("versions") or []:
             if line.startswith("FreeBSD "):
                 # keep "15.1-RELEASE-p6": FreeBSD advisories are written against patch levels
                 out.append(item("FreeBSD (OPNsense base)", "freebsd", "freebsd", line.split()[1],
-                                backports=True, full=line))
+                                backports=True, full=line, freebsd_base=True))
             elif line.startswith("OpenSSL "):
-                out.append(item("OpenSSL (OPNsense)", "openssl", "openssl", line.split()[1]))
+                # the OpenSSL OPNsense links against is a ports package (openssl35 in 26.x)
+                pkg = next((n for n in sorted(installed, reverse=True)
+                            if re.fullmatch(r"openssl\d*", n)
+                            and packages.pkg_version(installed[n]) == line.split()[1]), None)
+                extra = {"package": pkg, "package_version": installed[pkg], "pkgdb": "freebsd"} if pkg else {}
+                out.append(item("OpenSSL (OPNsense)", "openssl", "openssl", line.split()[1], **extra))
+                seen.add("OpenSSL")
     except net.HTTPStatus:
         pass
-    if e.get("packages", True):
-        installed = {p["name"]: p["version"] for p in info.get("package") or []
-                     if str(p.get("installed")) == "1"}
-        seen = set()
-        for name in OPN_PACKAGES:
-            if name in installed and name in packages.PACKAGES:
-                disp, al = packages.PACKAGES[name]
-                if disp in seen:
-                    continue
-                seen.add(disp)
-                out.append(item(f"{disp} (OPNsense)", version=packages.pkg_version(installed[name]),
-                                aliases=al, package=name, package_version=installed[name]))
+    want = e.get("packages", True)
+    if want:
+        names = sorted(installed) if want == "all" else OPN_PACKAGES
+        for name in names:
+            if name not in installed:
+                continue
+            disp, al = packages.PACKAGES.get(name, (name, []))
+            if want != "all" and name not in packages.PACKAGES:
+                continue
+            if disp in seen:
+                continue
+            seen.add(disp)
+            out.append(item(f"{disp} (OPNsense)", version=packages.pkg_version(installed[name]),
+                            aliases=al, package=name, package_version=installed[name], pkgdb="freebsd"))
     return out

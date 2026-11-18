@@ -20,7 +20,17 @@ releases are on the [releases page](https://github.com/magikh0e/cvescope/release
 - The CVE detail panel's history says what happened ("added to CISA KEV", "EPSS jumped
   12% -> 85%") instead of showing raw event kinds.
 
+- OPNsense and FreeBSD packages are checked against FreeBSD's VuXML (the database `pkg audit`
+  reads), compared with pkg's own version rules. A CVE VuXML lists for a package build is
+  affected or not_affected by its range ("fixed in 3.5.10, installed 3.5.9"); the base system is
+  checked against its patch level, so old FreeBSD advisories for other releases stop showing as
+  check. OPNsense's OpenSSL is tied to its `openssl35` package. New source `freebsd` (~1.4 MB,
+  only fetched when the inventory has OPNsense or FreeBSD), and `packages = "all"` on the
+  `opnsense` collector for every installed package.
+
 ### Changed
+- A version field that names another distro's releases ("Fedora version prior to 31", "all
+  RHEL versions") no longer counts as an affected range for your product.
 - Debian packages are checked against the security tracker's own JSON instead of its OSV
   export. The OSV copy turned the tracker's "not-affected" (vulnerable code never shipped in
   that release) into "no fix yet", and lagged behind it, so some Debian matches showed as

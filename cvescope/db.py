@@ -45,6 +45,12 @@ CREATE TABLE IF NOT EXISTS distro_fix(
   release TEXT, package TEXT, cve_id TEXT, status TEXT, fixed TEXT, note TEXT,
   PRIMARY KEY(release, package, cve_id)) WITHOUT ROWID;
 
+-- FreeBSD VuXML (what `pkg audit` reads): affected version ranges per package name and CVE.
+-- ranges is JSON: [[["ge","14.1"],["lt","14.1_6"]], ...]; sa names the FreeBSD advisory if any
+CREATE TABLE IF NOT EXISTS vuxml(
+  package TEXT, cve_id TEXT, vid TEXT, ranges TEXT, topic TEXT, sa TEXT,
+  PRIMARY KEY(package, cve_id, vid)) WITHOUT ROWID;
+
 -- optional NVD CPE ranges for CVEs the CVE List can't settle (see sources/nvd.py)
 CREATE TABLE IF NOT EXISTS nvd_cpe(
   cve_id TEXT PRIMARY KEY, fetched TEXT, status TEXT, cpes TEXT) WITHOUT ROWID;

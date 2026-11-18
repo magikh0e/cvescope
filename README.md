@@ -85,7 +85,7 @@ Each `[[inventory]]` block in the config is one collector:
 | `wpscan` | WordPress core, theme and plugin versions from a WPScan report | the JSON file(s) |
 | `whatweb` | web stack versions (server, PHP, CMS, JS libraries) from WhatWeb | the JSON file(s) |
 | `proxmox` | PVE version, every VM/container (OS via the guest agent), optionally QEMU, LXC, kernel | API token, PVEAuditor role |
-| `opnsense` | OPNsense, its FreeBSD base and OpenSSL, plus OpenSSH, Unbound, dnsmasq, Suricata and other packages | API key/secret |
+| `opnsense` | OPNsense, its FreeBSD base and OpenSSL, plus OpenSSH, Unbound, dnsmasq, Suricata and other packages (or all of them), checked against FreeBSD's VuXML | API key/secret |
 | `unifi` | UniFi Network version and every adopted device's firmware | Control Plane API key |
 | `pihole` | Pi-hole v6 core, FTL and web versions | app password |
 | `homeassistant` | HA Core (and OS + add-ons with an admin token) | long-lived token |
@@ -127,6 +127,26 @@ not_affected even if the upstream range covers your version.
 why when the tracker does: "no security update planned: Minor issue" (it may arrive in a point
 release, or never), "postponed by Debian", or "a fix is queued for the next point release". The same
 applies to `osquery` `deb_packages` results and to Debian/Ubuntu VMs found through Proxmox.
+
+### FreeBSD and OPNsense packages
+
+OPNsense builds its packages from FreeBSD ports, and FreeBSD keeps its own vulnerability
+database, VuXML (the one `pkg audit` reads). The `opnsense` collector records each package's
+exact build (`openssl35 3.5.9`, `sudo 1.9.17p2_4`, `dnsmasq 2.93,1`) and the base release
+(`15.1-RELEASE-p6`). Both are compared against VuXML using pkg's own version rules:
+
+- VuXML lists the CVE for that package and your build is inside its range: **affected**, with
+  the fixed build ("fixed in 3.5.10, installed 3.5.9"). The OPNsense update that ships it is
+  the fix.
+- VuXML lists it and your build is outside the range: **not_affected** ("fixed in 2.86_4,1").
+  Base-system advisories work the same way against the patch level, so an old FreeBSD SA for
+  14.1 no longer shows as "check" on 15.1-RELEASE-p6.
+- VuXML doesn't list it: the upstream answer stands. VuXML doesn't cover every CVE a port is
+  hit by, so silence there doesn't mean safe.
+
+`packages = "all"` on the `opnsense` collector adds every installed package, which makes the
+check equivalent to `pkg audit` on the firewall. FreeBSD VMs found through Proxmox get the
+base-release check too. VuXML is ~1.4 MB and only downloaded when you have one of these.
 
 ### Containers, endpoints and websites
 
@@ -232,6 +252,7 @@ live in `cvescope/collectors/packages.py`; add your own per item with `aliases =
 | your own folders | any file that mentions a CVE ID | local scan, only new files after the first run |
 | [Debian security tracker](https://security-tracker.debian.org/) JSON | fixed package version per Debian release | ~15 MB, only if you run Debian |
 | [Ubuntu OVAL](https://security-metadata.canonical.com/oval/) | fixed package version per Ubuntu release | ~2 MB per release you run |
+| [FreeBSD VuXML](https://vuxml.freebsd.org/) | affected package builds and base-system patch levels, as `pkg audit` uses them | ~1.4 MB, only if you run OPNsense or FreeBSD |
 
 ### Optional: NVD lookup
 

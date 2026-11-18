@@ -22,6 +22,7 @@ exploitdb = true        # Exploit-DB index
 github_poc = true       # nomi-sec/PoC-in-GitHub, shallow git clone (~85 MB, needs git)
 distro = true           # Debian/Ubuntu trackers, only for releases your inventory runs
 # distro_releases = ["debian:12", "ubuntu:noble"]   # fetch these even if no host reports them
+freebsd = true          # FreeBSD VuXML for OPNsense packages and FreeBSD base releases
 
 # Your own exploit/advisory folders: any file that mentions a CVE gets linked to it.
 # [[sources.local_archive]]
@@ -158,6 +159,7 @@ version = "30.0.4"
 # key_file = "~/.secrets/opnsense-key"
 # secret_file = "~/.secrets/opnsense-secret"
 # pin_sha256 = "..."
+# packages = "all"     # every installed package, checked against FreeBSD's VuXML like `pkg audit`
 
 # UniFi Network (Control Plane API key; devices = adopted APs/switches + firmware)
 # [[inventory]]
