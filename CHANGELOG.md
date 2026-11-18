@@ -5,6 +5,8 @@ releases are on the [releases page](https://github.com/magikh0e/cvescope/release
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-11-17
+
 ### Fixed
 - A write the page refused (from another site, not JSON, too large, or `serve.read_only`)
   could reset the connection instead of answering 403/413/415, mostly on Windows: the server
@@ -145,7 +147,8 @@ First release.
 - Act now / watch / info tiers, change events, and ntfy, Home Assistant and webhook alerts.
 - A local web page (127.0.0.1, Host header checked) and a CLI.
 
-[Unreleased]: https://github.com/magikh0e/cvescope/compare/v0.2.4...HEAD
+[Unreleased]: https://github.com/magikh0e/cvescope/compare/v0.2.5...HEAD
+[0.2.5]: https://github.com/magikh0e/cvescope/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/magikh0e/cvescope/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/magikh0e/cvescope/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/magikh0e/cvescope/compare/v0.2.1...v0.2.2
