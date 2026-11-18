@@ -1,4 +1,4 @@
-<p align="center"><img src="assets/logo-512.png" width="220" height="220" alt="cvescope logo: a mint targeting reticle over a grid of dim dots, with one red and two amber dots lit inside it"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/magikh0e/cvescope/main/assets/logo-512.png" width="220" height="220" alt="cvescope logo: a mint targeting reticle over a grid of dim dots, with one red and two amber dots lit inside it"></p>
 
 # cvescope
 
@@ -22,9 +22,9 @@ It runs on your own machine. Python 3.11+, standard library only, no account, no
 The write-up on my site covers why I built it and how it ranks things:
 **[magikh0e.pl/pubCode/cvescope.html](https://magikh0e.pl/pubCode/cvescope.html)**
 
-![Your exposure: matched CVEs ranked by exploitation evidence](docs/exposure.png)
+![Your exposure: matched CVEs ranked by exploitation evidence](https://raw.githubusercontent.com/magikh0e/cvescope/main/docs/exposure.png)
 
-<sub>Screenshots use the made-up network in [`examples/demo.toml`](examples/demo.toml).</sub>
+<sub>Screenshots use the made-up network in [`examples/demo.toml`](https://github.com/magikh0e/cvescope/blob/main/examples/demo.toml).</sub>
 
 ## What you get
 
@@ -67,7 +67,7 @@ cvescope --config examples/demo.toml serve       # http://127.0.0.1:8098/
 
 | CVE detail | Exploits and PoCs | On a phone |
 |---|---|---|
-| ![CVE detail panel](docs/detail.png) | ![Exploit sources and flagged PoCs](docs/exploits.png) | ![Phone layout](docs/mobile.png) |
+| ![CVE detail panel](https://raw.githubusercontent.com/magikh0e/cvescope/main/docs/detail.png) | ![Exploit sources and flagged PoCs](https://raw.githubusercontent.com/magikh0e/cvescope/main/docs/exploits.png) | ![Phone layout](https://raw.githubusercontent.com/magikh0e/cvescope/main/docs/mobile.png) |
 
 ## Inventory
 
@@ -237,7 +237,7 @@ app at a time. The demo config includes a sample SBOM (`examples/demo-sbom.cdx.j
   `deb_packages` or `rpm_packages` plus `kernel_info` on Linux. You can replace them with your own
   `queries = [...]`. With a `path`, it reads saved results instead: `osqueryi --json` output,
   osqueryd result logs, or the JSON written by
-  [`examples/windows-inventory.ps1`](examples/windows-inventory.ps1) on machines without osquery.
+  [`examples/windows-inventory.ps1`](https://github.com/magikh0e/cvescope/blob/main/examples/windows-inventory.ps1) on machines without osquery.
   Either way, the exact Windows build means Microsoft's CVE ranges match precisely, and Debian or
   Ubuntu packages go through the distro tracker. About 50 common programs are mapped by name
   (browsers, archivers, remote-access and VPN clients, dev tools); `programs = "all"` adds the rest.
@@ -515,9 +515,9 @@ Issues and pull requests are welcome. The most useful contributions:
   test in `tests/test_versions.py`.
 
 Run the tests with `python -m unittest discover -s tests`. Found a security problem in
-cvescope itself? See [SECURITY.md](SECURITY.md).
+cvescope itself? See [SECURITY.md](https://github.com/magikh0e/cvescope/blob/main/SECURITY.md).
 
 ## License
 
-GPL-3.0-or-later. See [LICENSE](LICENSE). The feeds cvescope downloads keep their own terms;
+GPL-3.0-or-later. See [LICENSE](https://github.com/magikh0e/cvescope/blob/main/LICENSE). The feeds cvescope downloads keep their own terms;
 it fetches them at run time and doesn't redistribute any of their data.

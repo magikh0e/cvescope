@@ -13,12 +13,17 @@ requires-python = ">=3.11"
 dependencies = []
 keywords = ["cve", "vulnerability", "kev", "epss", "exploit", "homelab", "vulnerability-management"]
 classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: System Administrators",
+  "Intended Audience :: Information Technology",
+  "Natural Language :: English",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Operating System :: OS Independent",
   "Topic :: Security",
+  "Topic :: System :: Monitoring",
   "Environment :: Console",
   "Environment :: Web Environment",
 ]
@@ -27,6 +32,8 @@ classifiers = [
 Homepage = "https://github.com/magikh0e/cvescope"
 Documentation = "https://magikh0e.pl/pubCode/cvescope.html"
 Issues = "https://github.com/magikh0e/cvescope/issues"
+Changelog = "https://github.com/magikh0e/cvescope/blob/main/CHANGELOG.md"
+Source = "https://github.com/magikh0e/cvescope"
 
 [project.scripts]
 cvescope = "cvescope.cli:main"
