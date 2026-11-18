@@ -26,6 +26,8 @@ button { font: inherit; color: inherit; }
 }
 .brand { font: 600 17px var(--mono); letter-spacing: .5px; white-space: nowrap; display: flex; align-items: center; gap: 8px; }
 .mark { display: block; border-radius: 5px; }
+.appver { font: 400 11px var(--mono); color: var(--muted); letter-spacing: 0; align-self: flex-end; margin-bottom: 2px; }
+.appver:hover { color: var(--link); }
 .totals { display: flex; gap: 8px; flex-wrap: wrap; }
 .total { white-space: nowrap; padding: 3px 10px; border-radius: 999px; font: 600 12px var(--mono); border: 1px solid transparent; cursor: pointer; background: none; }
 .total.act { color: var(--act); background: var(--act-bg); }

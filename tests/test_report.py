@@ -123,6 +123,11 @@ class Http(unittest.TestCase):
         except urllib.error.HTTPError as e:
             return e.code, dict(e.headers), e.read().decode()
 
+    def test_summary_carries_the_version(self):
+        from cvescope import __version__
+        with urllib.request.urlopen(f"http://{self.host}/api/summary", timeout=10) as r:
+            self.assertEqual(json.loads(r.read())["version"], __version__)
+
     def test_formats(self):
         code, h, body = self.get("format=html&tier=info")
         self.assertEqual(code, 200)

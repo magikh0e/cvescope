@@ -6,7 +6,7 @@ import datetime as dt
 import json
 import re
 
-from . import acks, db, vulnid
+from . import __version__, acks, db, vulnid
 
 TIER_LABEL = {"act": "Act now", "watch": "Watch", "info": "Info"}
 TIER_ORDER = {"act": 0, "watch": 1, "info": 2}
@@ -362,7 +362,7 @@ def summary(con, cfg) -> dict:
     for m in ms:
         totals[m["tier"]] += 1
     return {"items": items, "sources": src, "totals": totals, "health": health(con, cfg),
-            "read_only": bool(cfg["serve"].get("read_only")),
+            "read_only": bool(cfg["serve"].get("read_only")), "version": __version__,
             "cves": con.execute("SELECT count(*) FROM cve").fetchone()[0],
             "epss_date": (con.execute("SELECT max(date) FROM epss").fetchone() or [None])[0]}
 

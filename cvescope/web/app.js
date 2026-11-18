@@ -56,6 +56,12 @@ async function loadSummary() {
   const s = await api("/api/summary");
   state.items = s.items;
   state.readOnly = !!s.read_only;
+  if (s.version && /^[\w.+-]{1,30}$/.test(s.version)) {
+    const v = $("#appVersion");
+    v.textContent = "v" + s.version;
+    v.title = `cvescope ${s.version}: release notes`;
+    v.href = `https://github.com/magikh0e/cvescope/releases/tag/v${s.version}`;
+  }
   state.acked = s.totals.acked || 0;
   $("#ackCount").textContent = `(${state.acked})`;
   $("#ackFilter").hidden = !state.acked && !$("#fAcked").checked;

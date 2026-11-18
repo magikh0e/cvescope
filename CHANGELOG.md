@@ -5,18 +5,6 @@ releases are on the [releases page](https://github.com/magikh0e/cvescope/release
 
 ## [Unreleased]
 
-### Added
-- Reports: `cvescope report --format html|md|csv|json` writes a full report (counts, findings
-  with their reasons and fixes, hosts, changes in the last `--days`, acknowledgements, blind
-  spots), for one `--host` or all of them, to stdout or `--out` (date codes allowed). The page
-  has report links that follow its host and tier filters, served by `/api/report`; the HTML
-  report runs no scripts and prints cleanly to PDF.
-- Findings without a CVE ID: Proxmox advisories that name no CVE (69 of 98 today) and GitHub/OSV
-  advisories with no CVE (GHSA-, PYSEC-, GO-, RUSTSEC-, MAL- for malicious releases) are kept
-  under their own ID and matched, ranked, acknowledged and alerted on like CVEs. The page links
-  each to its source (GitHub advisory, Proxmox forum post, osv.dev), `#GHSA-...` links open them,
-  and search finds them by ID. Proxmox advisories now keep their details text.
-
 ## [0.2.6] - 2026-11-17
 
 ### Added
@@ -25,6 +13,17 @@ releases are on the [releases page](https://github.com/magikh0e/cvescope/release
   packages (PyPI, npm, Maven, Go, crates.io, RubyGems, NuGet, Packagist, Hex, Pub) are checked
   against their ecosystem's advisories on OSV.dev, Debian/Ubuntu packages against the distro
   tracker, and CPEs against the CVE List. The demo config has a sample SBOM.
+- Findings without a CVE ID: Proxmox advisories that name no CVE (69 of 98 today) and GitHub/OSV
+  advisories with no CVE (GHSA-, PYSEC-, GO-, RUSTSEC-, MAL- for malicious releases) are kept
+  under their own ID and matched, ranked, acknowledged and alerted on like CVEs. The page links
+  each to its source (GitHub advisory, Proxmox forum post, osv.dev), `#GHSA-...` links open them,
+  and search finds them by ID. Proxmox advisories now keep their details text.
+- Reports: `cvescope report --format html|md|csv|json` writes a full report (counts, findings
+  with their reasons and fixes, hosts, changes in the last `--days`, acknowledgements, blind
+  spots), for one `--host` or all of them, to stdout or `--out` (date codes allowed). The page
+  has report links that follow its host and tier filters, served by `/api/report`; the HTML
+  report runs no scripts and prints cleanly to PDF.
+- The page header shows cvescope's version, linked to its release notes; `/api/summary` reports it too.
 
 ### Changed
 - The `osv` source asks OSV.dev about every package in one batch query and downloads only new or
