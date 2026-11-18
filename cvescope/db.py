@@ -38,9 +38,11 @@ CREATE TABLE IF NOT EXISTS epss(
   cve_id TEXT PRIMARY KEY, score REAL, pct REAL, prev_pct REAL, date TEXT) WITHOUT ROWID;
 
 -- distro security trackers: per release + source package, is the CVE fixed and in which version
--- release looks like "debian:12" or "ubuntu:noble"; status is fixed | open | maybe | minor
+-- release looks like "debian:12" or "ubuntu:noble"
+-- status: fixed | open | maybe | minor (won't be patched, rated unimportant) | notaff (never affected)
+-- note: why an open one has no update yet (Debian: no DSA planned, postponed, next point release)
 CREATE TABLE IF NOT EXISTS distro_fix(
-  release TEXT, package TEXT, cve_id TEXT, status TEXT, fixed TEXT,
+  release TEXT, package TEXT, cve_id TEXT, status TEXT, fixed TEXT, note TEXT,
   PRIMARY KEY(release, package, cve_id)) WITHOUT ROWID;
 
 -- optional NVD CPE ranges for CVEs the CVE List can't settle (see sources/nvd.py)
@@ -80,7 +82,15 @@ def connect(path: Path | str) -> sqlite3.Connection:
     con.execute("PRAGMA synchronous=NORMAL")
     con.execute("PRAGMA foreign_keys=OFF")
     con.executescript(SCHEMA)
+    _migrate(con)
     return con
+
+
+def _migrate(con) -> None:
+    """Columns added after a release. CREATE TABLE IF NOT EXISTS won't add them to an old file."""
+    cols = {r[1] for r in con.execute("PRAGMA table_info(distro_fix)")}
+    if "note" not in cols:
+        con.execute("ALTER TABLE distro_fix ADD COLUMN note TEXT")
 
 
 _NORM = re.compile(r"[^a-z0-9]+")

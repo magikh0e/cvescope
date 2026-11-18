@@ -5,6 +5,7 @@ Nothing here logs request headers, so tokens never reach the console.
 
 from __future__ import annotations
 
+import gzip
 import hashlib
 import http.client
 import json
@@ -55,6 +56,21 @@ def get(url: str, etag: str | None = None, timeout: int = 120) -> tuple[bytes, s
     headers = {"If-None-Match": etag} if etag else {}
     with _open(url, headers, timeout) as r:
         return r.read(), r.headers.get("ETag")
+
+
+def get_since(url: str, since: str | None = None, timeout: int = 300) -> tuple[bytes, str | None]:
+    """GET with If-Modified-Since, gzip on the wire. Returns (body, Last-Modified).
+
+    For servers that send Last-Modified but no ETag. Raises NotModified when unchanged.
+    """
+    headers = {"Accept-Encoding": "gzip"}
+    if since:
+        headers["If-Modified-Since"] = since
+    with _open(url, headers, timeout) as r:
+        body = r.read()
+        if (r.headers.get("Content-Encoding") or "").lower() == "gzip":
+            body = gzip.decompress(body)
+        return body, r.headers.get("Last-Modified")
 
 
 def download(url: str, dest: Path, etag: str | None = None, timeout: int = 300,

@@ -63,7 +63,7 @@ class Distro(unittest.TestCase):
         for cid, pub in (("CVE-2024-1", "2024-01-01"), ("CVE-2024-2", "2024-02-01"), ("CVE-2024-3", "2024-03-01"),
                          ("CVE-2024-4", "2024-04-01"), ("CVE-2099-5", "2099-01-01")):
             self.con.execute("INSERT INTO cve(id,state,published) VALUES(?, 'PUBLISHED', ?)", (cid, pub))
-        self.con.executemany("INSERT INTO distro_fix VALUES(?,?,?,?,?)", [
+        self.con.executemany("INSERT INTO distro_fix(release, package, cve_id, status, fixed) VALUES(?,?,?,?,?)", [
             ("ubuntu:noble", "openssh", "CVE-2024-1", "fixed", "1:9.6p1-3ubuntu13.3"),
             ("ubuntu:noble", "openssh", "CVE-2024-2", "fixed", "1:9.6p1-3ubuntu13.9"),
             ("ubuntu:noble", "openssh", "CVE-2024-3", "open", None),
@@ -86,6 +86,66 @@ class Distro(unittest.TestCase):
         item = dict(self.item, extra=dict(self.item["extra"], distro="debian:12"))
         match._apply_distro(self.con, item, rows)
         self.assertEqual(rows[("CVE-2024-1", "ssh")][0], "check")
+
+    def test_debian_tracker(self):
+        # trimmed from the tracker JSON: sqlite3's CVE-2026-39113 is <not-affected> in trixie
+        # (the OSV export called it unfixed), plus the other shapes an entry can take
+        data = {
+            "sqlite3": {
+                "CVE-2024-1": {"releases": {
+                    "trixie": {"status": "resolved", "fixed_version": "0", "urgency": "unimportant"},
+                    "bookworm": {"status": "resolved", "fixed_version": "0", "urgency": "unimportant"}}},
+                "CVE-2024-2": {"releases": {
+                    "trixie": {"status": "resolved", "fixed_version": "3.46.1-7+deb13u1", "urgency": "medium"}}},
+                "CVE-2024-3": {"releases": {
+                    "trixie": {"status": "open", "urgency": "not yet assigned", "nodsa": "Minor issue",
+                               "nodsa_reason": ""}}},
+                "CVE-2024-4": {"releases": {"trixie": {"status": "open", "urgency": "unimportant"}}},
+                "CVE-2099-5": {"releases": {"trixie": {"status": "undetermined", "urgency": "not yet assigned"}}},
+                "TEMP-0000000-ABCDEF": {"releases": {"trixie": {"status": "open", "urgency": "low"}}},
+            },
+            "wpewebkit": {"CVE-2024-3": {"releases": {"trixie": {
+                "status": "open", "urgency": "not yet assigned", "nodsa_reason": "ignored",
+                "nodsa": "wpewebkit not covered by security support in Trixie"}}}},
+        }
+        from cvescope.sources import distro
+        rows, missing = distro.debian_rows(data, {"debian:13", "debian:11"})
+        self.assertEqual(missing, {"debian:11"})
+        got = {(r[1], r[2]): r[3:] for r in rows}
+        self.assertEqual(got[("sqlite3", "CVE-2024-1")], ("notaff", None, None))
+        self.assertEqual(got[("sqlite3", "CVE-2024-2")], ("fixed", "3.46.1-7+deb13u1", None))
+        self.assertEqual(got[("sqlite3", "CVE-2024-3")], ("open", None, "no security update planned: Minor issue"))
+        self.assertEqual(got[("sqlite3", "CVE-2024-4")][0], "minor")
+        self.assertEqual(got[("sqlite3", "CVE-2099-5")][0], "maybe")
+        self.assertEqual(got[("wpewebkit", "CVE-2024-3")][2],
+                         "Debian won't fix it here: wpewebkit not covered by security support in Trixie")
+        self.assertNotIn(("sqlite3", "TEMP-0000000-ABCDEF"), got)
+        self.assertEqual(len(rows), 6)  # bookworm wasn't asked for
+
+        distro._store(self.con, {"debian:13"}, rows)
+        item = {"id": "db", "extra": {"distro": "debian:13", "source": "sqlite3",
+                                      "package_version": "3.46.1-7+deb13u2"}}
+        out = {("CVE-2024-1", "db"): ("affected", "product", "upstream range")}
+        match._apply_distro(self.con, item, out)
+        self.assertEqual(out[("CVE-2024-1", "db")],
+                         ("not_affected", "distro", "Debian 13 isn't affected (the tracker marks it not-affected)"))
+        self.assertEqual(out[("CVE-2024-2", "db")][0], "not_affected")
+        self.assertEqual(out[("CVE-2024-3", "db")],
+                         ("affected", "distro", "Debian 13 has no fix released yet (no security update planned: Minor issue)"))
+        self.assertEqual(out[("CVE-2099-5", "db")][0], "check")
+
+    def test_old_database_gets_the_note_column(self):
+        path = os.path.join(tempfile.mkdtemp(), "old.db")
+        import sqlite3
+        old = sqlite3.connect(path)
+        old.execute("CREATE TABLE distro_fix(release TEXT, package TEXT, cve_id TEXT, status TEXT, fixed TEXT,"
+                    " PRIMARY KEY(release, package, cve_id)) WITHOUT ROWID")
+        old.execute("INSERT INTO distro_fix VALUES('debian:12','x','CVE-1','open',NULL)")
+        old.commit()
+        old.close()
+        con = db.connect(path)
+        self.assertEqual(tuple(con.execute("SELECT status, note FROM distro_fix").fetchone()), ("open", None))
+        con.close()
 
 
 class NoiseRules(unittest.TestCase):

@@ -21,6 +21,13 @@ releases are on the [releases page](https://github.com/magikh0e/cvescope/release
   12% -> 85%") instead of showing raw event kinds.
 
 ### Changed
+- Debian packages are checked against the security tracker's own JSON instead of its OSV
+  export. The OSV copy turned the tracker's "not-affected" (vulnerable code never shipped in
+  that release) into "no fix yet", and lagged behind it, so some Debian matches showed as
+  affected with no update available. The download is also smaller (~15 MB instead of ~80 MB).
+- An affected Debian match with no fix says why when the tracker does: no security update
+  planned (minor issue), postponed, or queued for the next point release. Debian's
+  "undetermined" now reads as check instead of affected.
 - The version number lives only in `cvescope/__init__.py`; `pyproject.toml` reads it from there.
 
 ## [0.2.3] - 2026-11-16

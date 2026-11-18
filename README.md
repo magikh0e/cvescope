@@ -104,7 +104,7 @@ the page marks it, so one outage doesn't make your matches vanish.
 
 Distros backport fixes, so `openssh 1:9.6p1-3ubuntu13.5` can be patched against a CVE whose
 upstream range says 9.6p1 is affected. For Debian and Ubuntu hosts cvescope asks the distro
-instead: the Debian security tracker (via its OSV export) and Canonical's per-release OVAL
+instead: the Debian security tracker's own JSON and Canonical's per-release OVAL
 data list, per source package, which CVEs were fixed and in which build. Give the `dpkg`
 collector the host's os-release along with the package list and every package gets a real
 answer:
@@ -117,9 +117,15 @@ command = ["ssh", "web1", "cat /etc/os-release; echo ---; dpkg-query -W -f='${db
 # packages = "all"   # every source package, not just the ~60 cvescope has names for
 ```
 
-Only the releases your inventory runs are downloaded (Debian ~80 MB once, then only when it
-changes; Ubuntu ~2 MB per release). A CVE the tracker doesn't list for the package counts as
-not affecting it, unless it's under two weeks old and may not have been triaged yet. The same
+Only the releases your inventory runs are kept (Debian ~15 MB, then only when it changes;
+Ubuntu ~2 MB per release). A CVE the tracker doesn't list for the package counts as not
+affecting it, unless it's under two weeks old and may not have been triaged yet. One the
+tracker marks not-affected for your release (the vulnerable code never shipped in it) is
+not_affected even if the upstream range covers your version.
+
+"Affected" with no update in `apt` usually means Debian hasn't released a fix. The reason says
+why when the tracker does: "no security update planned: Minor issue" (it may arrive in a point
+release, or never), "postponed by Debian", or "a fix is queued for the next point release". The same
 applies to `osquery` `deb_packages` results and to Debian/Ubuntu VMs found through Proxmox.
 
 ### Containers, endpoints and websites
@@ -224,7 +230,7 @@ live in `cvescope/collectors/packages.py`; add your own per item with `aliases =
 | [Exploit-DB](https://gitlab.com/exploit-database/exploitdb) index | published exploit code | ~10 MB |
 | [PoC-in-GitHub](https://github.com/nomi-sec/PoC-in-GitHub) | GitHub repos claiming a PoC | ~85 MB shallow clone, needs git |
 | your own folders | any file that mentions a CVE ID | local scan, only new files after the first run |
-| [Debian security tracker](https://security-tracker.debian.org/) (OSV export) | fixed package version per Debian release | ~80 MB, only if you run Debian |
+| [Debian security tracker](https://security-tracker.debian.org/) JSON | fixed package version per Debian release | ~15 MB, only if you run Debian |
 | [Ubuntu OVAL](https://security-metadata.canonical.com/oval/) | fixed package version per Ubuntu release | ~2 MB per release you run |
 
 ### Optional: NVD lookup

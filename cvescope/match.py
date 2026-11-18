@@ -200,15 +200,15 @@ def _apply_distro(con, it: dict, rows: dict) -> None:
     if not con.execute("SELECT 1 FROM distro_fix WHERE release=? LIMIT 1", (release,)).fetchone():
         return  # no tracker data for this release yet
     label = _distro_label(release)
-    listed = {r[0]: (r[1], r[2]) for r in con.execute(
-        "SELECT cve_id, status, fixed FROM distro_fix WHERE release=? AND package=?", (release, pkg))}
+    listed = {r[0]: (r[1], r[2], r[3]) for r in con.execute(
+        "SELECT cve_id, status, fixed, note FROM distro_fix WHERE release=? AND package=?", (release, pkg))}
     known = set()
     ids = list(listed)
     for i in range(0, len(ids), 500):
         chunk = ids[i:i + 500]
         known.update(r[0] for r in con.execute(
             f"SELECT id FROM cve WHERE state='PUBLISHED' AND id IN ({','.join('?' * len(chunk))})", chunk))
-    for cve, (status, fixed) in listed.items():
+    for cve, (status, fixed, note) in listed.items():
         if cve not in known:
             continue
         if status == "fixed":
@@ -218,11 +218,16 @@ def _apply_distro(con, it: dict, rows: dict) -> None:
                 pro = " (Ubuntu Pro/ESM)" if "esm" in fixed else ""
                 rows[(cve, it["id"])] = ("affected", "distro", f"{label} fix {fixed}{pro} is newer than {pv}")
         elif status == "open":
-            rows[(cve, it["id"])] = ("affected", "distro", f"{label} has no fix released yet")
+            why = f" ({note})" if note else ""
+            rows[(cve, it["id"])] = ("affected", "distro", f"{label} has no fix released yet{why}")
         elif status == "minor":
             rows[(cve, it["id"])] = ("not_affected", "distro", f"{label} rates it unimportant (not patched by design)")
+        elif status == "notaff":
+            rows[(cve, it["id"])] = ("not_affected", "distro",
+                                     f"{label} isn't affected (the tracker marks it not-affected)")
         else:
-            rows[(cve, it["id"])] = ("check", "distro", f"{label} hasn't decided (may need fixing)")
+            why = f" ({note})" if note else ""
+            rows[(cve, it["id"])] = ("check", "distro", f"{label} hasn't decided (may need fixing){why}")
     cutoff = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=_RECENT_DAYS)).strftime("%Y-%m-%d")
     stale = [cid for (cid, iid), v in rows.items() if iid == it["id"] and cid not in listed and v[0] == "check"]
     for i in range(0, len(stale), 500):
