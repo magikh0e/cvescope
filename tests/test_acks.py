@@ -57,11 +57,11 @@ def seed(con):
                 "('CVE-2013-3900','PUBLISHED','WinVerifyTrust',5.5,'2013-12-10','active'),"
                 "('CVE-2024-0001','PUBLISHED','other',9.8,'2024-01-01',NULL)")
     con.execute("INSERT INTO item(id, name, version, collector, extra) VALUES"
-                "('osquery:win-minitop','Windows 11 (minitop)','10.0.26300','osquery:pc','{}'),"
+                "('osquery:win-pc1','Windows 11 (pc1)','10.0.26200','osquery:pc','{}'),"
                 "('static:web01','Web server (web01)','1.0','static','{}')")
-    con.execute("INSERT INTO match VALUES('CVE-2013-3900','osquery:win-minitop','check','product','x','2026-11-17'),"
+    con.execute("INSERT INTO match VALUES('CVE-2013-3900','osquery:win-pc1','check','product','x','2026-11-17'),"
                 "('CVE-2024-0001','static:web01','affected','product','x','2026-11-17'),"
-                "('CVE-2024-0001','osquery:win-minitop','not_affected','product','x','2026-11-17')")
+                "('CVE-2024-0001','osquery:win-pc1','not_affected','product','x','2026-11-17')")
     con.execute("INSERT INTO signal VALUES('CVE-2013-3900','kev','k','2026-01-01','2026-01-01','{}')")
     con.commit()
 
@@ -81,17 +81,17 @@ class Flow(unittest.TestCase):
         return {(m["cve_id"], m["item_id"]) for m in query.matches(self.con, self.cfg, **kw)}
 
     def test_ack_hides_until_new_evidence(self):
-        rows = acks.add(self.con, self.cfg, "CVE-2013-3900", "minitop", "applied the opt-in fix")
-        self.assertEqual([r["item_id"] for r in rows], ["osquery:win-minitop"])
-        self.assertNotIn(("CVE-2013-3900", "osquery:win-minitop"), self.ids())
-        self.assertIn(("CVE-2013-3900", "osquery:win-minitop"), self.ids(acked="only"))
+        rows = acks.add(self.con, self.cfg, "CVE-2013-3900", "pc1", "applied the opt-in fix")
+        self.assertEqual([r["item_id"] for r in rows], ["osquery:win-pc1"])
+        self.assertNotIn(("CVE-2013-3900", "osquery:win-pc1"), self.ids())
+        self.assertIn(("CVE-2013-3900", "osquery:win-pc1"), self.ids(acked="only"))
         s = query.summary(self.con, self.cfg)
         self.assertEqual((s["totals"]["act"], s["totals"]["info"], s["totals"]["acked"]), (0, 1, 1))
-        win = next(i for i in s["items"] if i["id"] == "osquery:win-minitop")
+        win = next(i for i in s["items"] if i["id"] == "osquery:win-pc1")
         self.assertEqual(win["counts"]["act"], 0)
         hist = query.cve_detail(self.con, self.cfg, "CVE-2013-3900")
         self.assertEqual(hist["events"][0]["summary"],
-                         "acknowledged (Windows 11 (minitop)): applied the opt-in fix")
+                         "acknowledged (Windows 11 (pc1)): applied the opt-in fix")
         self.assertEqual(hist["matches"][0]["ack"]["state"], "active")
         # a Metasploit exploit module shows up: it's back, and says why
         self.con.execute("""INSERT INTO signal VALUES('CVE-2013-3900','msf','m','x','x','{"type":"exploit"}')""")
@@ -110,7 +110,7 @@ class Flow(unittest.TestCase):
         with self.assertRaises(ValueError):  # matches nothing
             acks.add(self.con, self.cfg, "CVE-1999-0001")
         with self.assertRaises(ValueError):  # not_affected on that item
-            acks.add(self.con, self.cfg, "CVE-2024-0001", "minitop")
+            acks.add(self.con, self.cfg, "CVE-2024-0001", "pc1")
         with self.assertRaises(ValueError):
             acks.add(self.con, self.cfg, "CVE-2024-0001", note="x" * 501)
         with self.assertRaises(ValueError):
@@ -119,7 +119,7 @@ class Flow(unittest.TestCase):
             acks.remove(self.con, "CVE-2024-0001")
 
     def test_many_at_once(self):
-        pairs = [("cve-2013-3900", "osquery:win-minitop"), ("CVE-2024-0001", "static:web01"),
+        pairs = [("cve-2013-3900", "osquery:win-pc1"), ("CVE-2024-0001", "static:web01"),
                  ("CVE-2024-0001", "static:web01")]                      # duplicates collapse
         rows = acks.add_many(self.con, self.cfg, pairs, "patch window", days=30)
         self.assertEqual(len(rows), 2)
@@ -133,7 +133,7 @@ class Flow(unittest.TestCase):
     def test_many_is_all_or_nothing(self):
         with self.assertRaises(ValueError) as e:                        # not_affected there: refused
             acks.add_many(self.con, self.cfg, [("CVE-2024-0001", "static:web01"),
-                                               ("CVE-2024-0001", "osquery:win-minitop")])
+                                               ("CVE-2024-0001", "osquery:win-pc1")])
         self.assertIn("1 of the 2", str(e.exception))
         self.assertEqual(acks.load(self.con), {})
         with self.assertRaises(ValueError):
@@ -211,7 +211,7 @@ class Http(unittest.TestCase):
         self.assertEqual(self.get("/api/summary")["totals"]["acked"], 0)
 
     def test_bulk_round_trip(self):
-        pairs = [{"cve": "CVE-2013-3900", "item": "osquery:win-minitop"}, {"cve": "CVE-2024-0001", "item": "static:web01"}]
+        pairs = [{"cve": "CVE-2013-3900", "item": "osquery:win-pc1"}, {"cve": "CVE-2024-0001", "item": "static:web01"}]
         code, d = self.post("/api/ack/bulk", {"pairs": pairs, "note": "done", "days": 7})
         self.assertEqual((code, d["count"]), (200, 2))
         self.assertEqual(self.get("/api/summary")["totals"]["acked"], 2)

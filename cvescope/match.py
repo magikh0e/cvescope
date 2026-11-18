@@ -31,9 +31,14 @@ def _vendor_ok(want: str, got: str) -> bool:
     return want == "*" or not got or got == want or got.startswith(want + " ") or want.startswith(got + " ")
 
 
+# a wildcard alias like "windows 11*" means the OS's own releases ("windows 11 version 24h2"),
+# not the separate kits Microsoft names after it ("windows 11 hlk 24h2")
+_KIT = re.compile(r"\s*(?:hlk|hardware lab kit|sdk|wdk|driver kit)\b")
+
+
 def _prod_ok(alias, product: str) -> bool:
     _, p, prefix = alias
-    return product == p or (prefix and product.startswith(p))
+    return product == p or (prefix and product.startswith(p) and not _KIT.match(product[len(p):]))
 
 
 def _entry_matches(entry: dict, aliases) -> bool:
@@ -57,11 +62,11 @@ def _candidates(con, aliases) -> set[str]:
         if not product:
             continue
         if prefix:
-            rows = con.execute("SELECT cve_id, vendor FROM cve_product WHERE product >= ? AND product < ?",
+            rows = con.execute("SELECT cve_id, vendor, product FROM cve_product WHERE product >= ? AND product < ?",
                                (product, product + "￿"))
         else:
-            rows = con.execute("SELECT cve_id, vendor FROM cve_product WHERE product = ?", (product,))
-        out.update(cid for cid, v in rows if _vendor_ok(vendor, v))
+            rows = con.execute("SELECT cve_id, vendor, product FROM cve_product WHERE product = ?", (product,))
+        out.update(cid for cid, v, p in rows if _vendor_ok(vendor, v) and _prod_ok(al, p))
     return out
 
 
@@ -100,7 +105,7 @@ def _from_nvd(item: dict, cve_row) -> tuple[str, str, str] | None:
     aliases = item.setdefault("_aliases", [_alias(a) for a in item["aliases"]])
     hits = [e for e in json.loads(raw)
             if any(_prod_ok(al, db.norm(e["p"])) and _vendor_ok(al[0], db.norm(e["v"])) for al in aliases)]
-    affected, decided, fixes = False, False, []
+    affected, decided, fixes, hit_fix = False, False, [], None
     for e in hits:
         if e["ver"] not in ("*", "-", ""):
             decided = True
@@ -110,6 +115,8 @@ def _from_nvd(item: dict, cve_row) -> tuple[str, str, str] | None:
             lo = (not e.get("si") or cmp(ver, e["si"]) >= 0) and (not e.get("se") or cmp(ver, e["se"]) > 0)
             hi = (not e.get("ei") or cmp(ver, e["ei"]) <= 0) and (not e.get("ee") or cmp(ver, e["ee"]) < 0)
             affected |= lo and hi
+            if lo and hi and e.get("ee") and (hit_fix is None or cmp(e["ee"], hit_fix) < 0):
+                hit_fix = e["ee"]  # versionEndExcluding: the release that fixed it
             if e.get("ee") or e.get("ei"):
                 fixes.append(e.get("ee") or e.get("ei"))
     if not decided:
@@ -117,7 +124,7 @@ def _from_nvd(item: dict, cve_row) -> tuple[str, str, str] | None:
     if affected:
         if (item.get("extra") or {}).get("backports"):
             return "check", "nvd", "NVD: version inside an affected range; distro package, fixes may be backported"
-        return "affected", "nvd", "NVD: version inside an affected range"
+        return "affected", "nvd", "NVD: version inside an affected range" + (f"; fixed in {hit_fix}" if hit_fix else "")
     top = None
     for f in fixes:
         if top is None or cmp(f, top) > 0:
@@ -145,6 +152,22 @@ def _from_description(item: dict, cve_row, how: str, reason: str) -> tuple[str, 
     return "check", how, reason
 
 
+_RELEASE = re.compile(r"^\d{2}h\d$", re.I)
+
+
+def _release_named(entry: dict) -> bool:
+    """True when the entry's ranges are Windows release names (21H2, 24H2), not builds."""
+    named = False
+    for r in entry.get("vs") or []:
+        for b in (r.get("version"), r.get("lessThan"), r.get("lessThanOrEqual")):
+            b = str(b or "").strip()
+            if _RELEASE.match(b):
+                named = True
+            elif b not in ("", "0", "*"):
+                return False
+    return named
+
+
 def evaluate(item: dict, cve_row) -> tuple[str, str, str]:
     """-> (status, how, reason) for one item against one CVE record."""
     aliases = item.setdefault("_aliases", [_alias(a) for a in item["aliases"]])
@@ -164,7 +187,15 @@ def evaluate(item: dict, cve_row) -> tuple[str, str, str]:
     if not entries:
         return _from_description(item, cve_row, "kev",
                                  "named by CISA KEV; the CVE record has no version data for it")
-    results = [eval_entry(e, item.get("version")) for e in entries]
+    dv = (item.get("extra") or {}).get("display_version")
+    results = []
+    for e in entries:
+        if not _release_named(e):
+            results.append(eval_entry(e, item.get("version")))
+        elif dv:  # "Windows 11 before 24H2": compare releases, not the build number
+            results.append(eval_entry(e, dv))
+        else:
+            results.append(("unknown", "the record names Windows releases (like 24H2) and this item's isn't known"))
     how = "cpe" if all(not db.norm(e.get("p")) for e in entries) else "product"
     if any(s == "affected" for s, _ in results):
         reason = next(r for s, r in results if s == "affected")
@@ -540,7 +571,8 @@ def fix_state(status: str, how: str, detail: str | None) -> str:
     available  the vendor shipped a fixed version: update (or reboot, for a Proxmox kernel)
     none       no fix released yet, or the vendor hasn't decided
     wontfix    the vendor plans no update for this release (minor issue, ignored, out of support)
-    unknown    no vendor patch data: an upstream version range or a keyword match
+    unknown    no vendor patch data: an upstream range that names no fix, a backported distro
+               package no tracker answered, or a keyword match
 
     Keep this next to the reasons it reads; tests/test_fix_state.py runs the real steps.
     """
@@ -557,6 +589,8 @@ def fix_state(status: str, how: str, detail: str | None) -> str:
         return "available" if ": fixed in " in d or "; update available: " in d else "none"
     if how == "psa":
         return "available"  # a PSA always names the package version that fixes it
+    if how in ("product", "cpe", "nvd") and "; fixed in " in d and "may be backported" not in d:
+        return "available"  # the upstream record names the fixed release (a distro build may differ)
     return "unknown"
 
 
@@ -613,6 +647,11 @@ def run(con, cfg) -> str:
         rows.append((cid, iid, status, how, reason, first))
         if not first_run and live and not was_live:
             db.add_event(con, cid, "match", {"item": iid, "status": status})
+        # a fix just shipped for something you have: only "no fix yet / none planned" -> available
+        # counts, so better data for a finding (unknown -> available) doesn't read as news
+        if not first_run and live and was_live and fix_state(status, how, reason) == "available" and \
+                fix_state(prev["status"], prev["how"], prev["detail"]) in ("none", "wontfix"):
+            db.add_event(con, cid, "fix", {"item": iid, "detail": reason[:300]})
         if not first_run and was_live and not live:
             db.add_event(con, cid, "resolved", {"item": iid, "status": status})
     for (cid, iid), prev in old.items():

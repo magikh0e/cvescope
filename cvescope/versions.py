@@ -6,6 +6,7 @@ Not a distro-package comparator: Debian/Ubuntu backports are flagged by the coll
 
 from __future__ import annotations
 
+import functools
 import re
 
 _TOK = re.compile(r"\d+|[a-z]+")
@@ -364,6 +365,31 @@ _DISTRO_WORDS = re.compile(r"\b(?:fedora|rhel|red hat|enterprise linux|centos|ro
                            r"ubuntu|debian|suse|sles|opensuse|amazon linux|alpine|oracle linux)\b", re.I)
 
 
+_cmp_key = functools.cmp_to_key(lambda a, b: cmp(a, b))
+
+
+def _fixed_in(v: str | None) -> str:
+    """The suffix match.fix_state looks for: "; fixed in <version>"."""
+    return f"; fixed in {v}" if v else ""
+
+
+def _next_fixed(entry: dict, ver: str) -> str | None:
+    """For records that list fixed versions and mark the rest affected (kernel.org, Jenkins):
+    the first fixed release after `ver`, preferring one on the same major.minor line."""
+    later = []
+    for r in entry.get("vs") or []:
+        v = r.get("version")
+        if (r.get("status") or "").lower() != "unaffected" or (r.get("versionType") or "").lower() == "git":
+            continue
+        if isinstance(v, str) and clean(v) and cmp(v, ver) > 0:
+            later.append(v.strip())
+    if not later:
+        return None
+    line = key(ver)[:2]
+    same = [v for v in later if key(clean(v))[:2] == line]
+    return min(same or later, key=_cmp_key)
+
+
 def eval_entry(entry: dict, version: str | None) -> tuple[str, str]:
     """Evaluate one compact affected[] entry for an installed version.
 
@@ -373,6 +399,7 @@ def eval_entry(entry: dict, version: str | None) -> tuple[str, str]:
     if ver is None:
         return "unknown", "no installed version"
     hits: list[str] = []
+    fixes: list[str] = []      # upper bounds of the affected ranges this version is in
     parseable = False
     listed_unaffected = False
     other_distro_ok = bool(_DISTRO_WORDS.search(f"{entry.get('v') or ''} {entry.get('p') or ''}"))
@@ -407,10 +434,13 @@ def eval_entry(entry: dict, version: str | None) -> tuple[str, str]:
         parseable = True
         if res:
             hits.append(st)
+            # "< 2.47.3" names the release that fixed it; "<= 2.47.2" or "<= *" doesn't
+            if st == "affected" and lte is None and isinstance(lt, str) and clean(lt) and cmp(lt, ver) > 0:
+                fixes.append(lt.strip())
     if "unaffected" in hits:
         return "unaffected", "version listed as unaffected"
     if "affected" in hits:
-        return "affected", "version inside an affected range"
+        return "affected", "version inside an affected range" + _fixed_in(min(fixes, key=_cmp_key) if fixes else None)
     if not parseable:
         # defaultStatus alone says nothing about *your* version
         return "unknown", "no usable version data"
@@ -422,6 +452,7 @@ def eval_entry(entry: dict, version: str | None) -> tuple[str, str]:
     if ds in ("affected", "unaffected"):
         # e.g. Jenkins lists only fixed/unaffected versions and marks everything else affected
         if ds == "affected":
-            return ds, "not among the versions the record lists as fixed or unaffected; it marks the rest affected"
+            return ds, ("not among the versions the record lists as fixed or unaffected; it marks the rest affected"
+                        + _fixed_in(_next_fixed(entry, ver)))
         return ds, "outside every listed range; the record marks the rest unaffected"
     return "unaffected", "outside every listed range"

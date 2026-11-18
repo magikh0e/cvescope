@@ -7,7 +7,7 @@ class Hosts(unittest.TestCase):
     def test_host_from_the_item_name(self):
         for name, collector, host in [
             ("OpenSSH (h0evpn)", "dpkg:h0evpn", "h0evpn"),
-            ("7-Zip (minitop)", "osquery:osquery#7", "minitop"),               # unnamed collector entry
+            ("7-Zip (pc1)", "osquery:osquery#7", "pc1"),               # unnamed collector entry
             ("Linux kernel (PVE1)", "proxmox:Proxmox VE (PVE1)", "PVE1"),
             ("Proxmox VE (PVE1)", "proxmox:Proxmox VE (PVE1)", "PVE1"),
             ("Linux kernel (VM 100 UnFi)", "proxmox:Proxmox VE (PVE2)", "VM 100 UnFi"),   # a guest is its own host

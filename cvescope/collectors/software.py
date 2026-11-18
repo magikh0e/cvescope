@@ -138,8 +138,11 @@ def windows_os(os_row: dict, host: str):
         aliases += [f"microsoft:windows {m.group(2)} version {dv}"] if dv else []
         aliases += [f"microsoft:windows {m.group(2)}*"]
     version = f"10.0.{build}.{ubr}" if ubr else f"10.0.{build}"
+    # records sometimes bound Windows by release ("before 24H2") instead of build: match.py
+    # compares those against this
     return item(f"{name} ({host})", version=version, aliases=aliases, backports=not ubr,
-                note=None if ubr else "no update revision (UBR): matches stay 'check'")
+                note=None if ubr else "no update revision (UBR): matches stay 'check'",
+                display_version=dv.upper() or None)
 
 
 def _rows_from_file(path: str) -> dict[str, list[dict]]:

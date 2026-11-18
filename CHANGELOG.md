@@ -5,6 +5,24 @@ releases are on the [releases page](https://github.com/magikh0e/cvescope/release
 
 ## [Unreleased]
 
+### Added
+- "A fix is out now" changes: when a finding goes from no fix yet (or no update planned) to fix
+  available, the Changes tab and alerts say so, with what fixes it. `notify.fixes_min_tier`
+  sets how far down the tiers these alert (default: the same as `min_tier`); `"info"` tells you
+  about every fix you can install.
+- Apps that aren't distro-patched get the fixed release from the CVE record itself ("< 3.5.10"
+  is fixed in 3.5.10; NVD's versionEndExcluding; for records that list fixed versions and mark
+  the rest affected, the next fixed release, preferring your version's line). They now read
+  "fix available" instead of "not known".
+
+### Fixed
+- Windows: a `windows 11*` alias matched Microsoft's Hardware Lab Kit ("Windows 11 HLK 22H2"),
+  a separate product, so HLK CVEs showed up on Windows 11 PCs. Kits (HLK, SDK, WDK) no longer
+  match the OS.
+- Windows: a record bounded by release ("Windows 11 before 24H2") was compared with the build
+  number (10.0.26200), so every current PC read as affected. The Windows inventory now keeps the
+  release name (DisplayVersion) and those records compare releases.
+
 ## [0.2.7] - 2026-11-17
 
 ### Added

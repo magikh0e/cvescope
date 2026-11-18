@@ -260,7 +260,7 @@ _KIND = {"kev": "added to CISA KEV", "msf": "Metasploit module published", "nucl
          "edb": "Exploit-DB entry published", "poc": "new GitHub PoC", "local": "added to your archive",
          "epss": "EPSS jumped", "ssvc": "CISA SSVC exploitation raised", "match": "now matches your inventory",
          "resolved": "no longer affects you", "new_cve": "new CVE", "ack": "acknowledged",
-         "unack": "acknowledgement removed"}
+         "unack": "acknowledgement removed", "fix": "fix available"}
 
 
 def item_names(con) -> dict:
@@ -285,6 +285,9 @@ def event_summary(e: dict, names: dict | None = None) -> str:
             s += f" until {d['until']}"
         if d.get("note"):
             s += f": {d['note']}"
+    elif e["kind"] == "fix":
+        item = d.get("item")
+        s += f" ({(names or {}).get(item, item)}): {d.get('detail')}"
     elif e["kind"] == "poc":
         s += f": {d.get('url')}"
     elif e["kind"] in ("msf", "nuclei", "edb"):

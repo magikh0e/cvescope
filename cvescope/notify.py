@@ -1,6 +1,8 @@
 """Push alerts for changes that touch your inventory: ntfy, Home Assistant, or a webhook.
 
-Only events on matched CVEs are sent, and only at or above notify.min_tier.
+Only events on matched CVEs are sent, and only at or above notify.min_tier. "A fix is
+available now" events use notify.fixes_min_tier instead when it's set, so you can hear about
+every fix you can install without getting every info-tier change.
 Every pending event is marked handled after a run, sent or not, so nothing piles up.
 """
 
@@ -29,13 +31,18 @@ def _pending(con, cfg) -> tuple[list[dict], list[int]]:
         if m["cve_id"] in cves:
             ms.setdefault(m["cve_id"], []).append(m)
     limit = TIER_RANK.get(cfg["notify"].get("min_tier", "act"), 0)
+    fix_limit = TIER_RANK.get(cfg["notify"].get("fixes_min_tier") or cfg["notify"].get("min_tier", "act"), 0)
     names = query.item_names(con)
     out = []
     for cid, mlist in ms.items():
         t = mlist[0]["tier"]
-        if TIER_RANK[t] > limit:
+        mine = [e for e in ev if e["cve_id"] == cid]
+        fix_ok = TIER_RANK[t] <= fix_limit and any(e["kind"] == "fix" for e in mine)
+        if not (TIER_RANK[t] <= limit and any(e["kind"] != "fix" for e in mine)) and not fix_ok:
             continue
-        changes = [query.event_summary(e, names) for e in ev if e["cve_id"] == cid]
+        if TIER_RANK[t] > limit:  # here for the fix only: leave the rest out of the message
+            mine = [e for e in mine if e["kind"] == "fix"]
+        changes = [query.event_summary(e, names) for e in mine]
         out.append({"cve": cid, "tier": t, "why": mlist[0]["why"], "title": mlist[0].get("title"),
                     "items": [f"{m['item_name']} {m.get('item_version') or ''} ({m['status']})".strip() for m in mlist],
                     "changes": list(dict.fromkeys(changes)), "epss_pct": mlist[0].get("epss_pct"),
@@ -45,12 +52,12 @@ def _pending(con, cfg) -> tuple[list[dict], list[int]]:
 
 
 def format_message(alerts: list[dict]) -> tuple[str, str]:
-    n_act = sum(1 for a in alerts if a["tier"] == "act")
-    n_watch = len(alerts) - n_act
-    parts = [f"{n_act} act now"] if n_act else []
-    if n_watch:
-        parts.append(f"{n_watch} watch")
+    n = {t: sum(1 for a in alerts if a["tier"] == t) for t in TIER_RANK}
+    parts = [f"{n[t]} {label}" for t, label in (("act", "act now"), ("watch", "watch"), ("info", "info")) if n[t]]
     title = "cvescope: " + ", ".join(parts)
+    fixes = sum(1 for a in alerts if any(c.startswith("fix available") for c in a["changes"]))
+    if fixes:
+        title += f" ({fixes} with a fix available now)" if fixes < len(alerts) else " (fix available now)"
     lines = []
     for a in alerts[:15]:
         head = f"{a['cve']} [{query.TIER_LABEL[a['tier']]}]"

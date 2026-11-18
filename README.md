@@ -153,10 +153,14 @@ by, and every report lists:
 
 | Fix | Means | Read from |
 |---|---|---|
-| **available** | The vendor shipped a fixed build: update (or reboot, for a Proxmox kernel already installed) | Debian/Ubuntu fix newer than installed, VuXML or OSV "fixed in", every Proxmox PSA |
+| **available** | The vendor shipped a fixed build: update (or reboot, for a Proxmox kernel already installed) | Debian/Ubuntu fix newer than installed, VuXML or OSV "fixed in", every Proxmox PSA, and for apps nobody backports to, the release the CVE record names as fixed ("< 3.5.10") |
 | **not yet** | No fix released, or the vendor hasn't decided | Debian/Ubuntu open, postponed, queued for a point release, not triaged |
 | **not planned** | The vendor plans no update for this release | "no security update planned", "won't fix it", out of security support |
-| **not known** | No vendor patch data | Upstream version ranges, keyword matches |
+| **not known** | No vendor patch data | Upstream ranges that name no fix, backported distro packages no tracker answered, keyword matches |
+
+When a fix ships for something you run (a finding goes from **not yet** or **not planned** to
+**available**), that's a change of its own: "fix available (glibc (web1)): Debian 13 fix
+2.41-12+deb13u1 is newer than 2.41-12". It shows in **Changes** and goes out as an alert.
 
 ### FreeBSD and OPNsense packages
 
@@ -397,6 +401,7 @@ created within two days of disclosure). Read the code first, and only run it in 
 ```toml
 [notify]
 min_tier = "act"
+fixes_min_tier = "info"   # optional: tell me about every fix I can install, whatever its tier
 
 [[notify.ntfy]]
 url = "https://ntfy.sh/pick-a-long-random-topic"
@@ -406,6 +411,10 @@ url = "http://homeassistant.local:8123"
 token_env = "HASS_TOKEN"
 service = "notify.mobile_app_your_phone"
 ```
+
+`min_tier` decides which changes are worth a message. "A fix is out now" changes use
+`fixes_min_tier` instead when you set it, so you can hear about every update that clears a
+finding without getting every info-tier change. Left out, it follows `min_tier`.
 
 `cvescope notify --test` sends one test message to every channel. `cvescope sync --dry-run`
 prints what it would send without marking anything as sent.
@@ -417,7 +426,7 @@ you've turned on, a service you've firewalled off, an upgrade that's booked. Ack
 and they leave act now, watch, the counts and the alerts:
 
 ```
-cvescope ack CVE-2013-3900 --item minitop -m "applied the opt-in fix"
+cvescope ack CVE-2013-3900 --item pc1 -m "applied the opt-in fix"
 cvescope ack CVE-2024-23897 -m "CLI disabled, upgrading Saturday" --days 7
 cvescope acks              # what's acknowledged, and whether it still holds
 cvescope unack CVE-2024-23897

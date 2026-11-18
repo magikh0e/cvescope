@@ -34,6 +34,8 @@ DEFAULTS = {
     },
     "notify": {
         "min_tier": "act",
+        # "a fix is out now" alerts: "" follows min_tier; "info" tells you about every fix you can install
+        "fixes_min_tier": "",
         "keyword_matches": False,
         "ntfy": [],
         "homeassistant": [],

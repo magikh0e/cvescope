@@ -37,6 +37,7 @@ proxmox = true          # Proxmox VE's security advisories (PSAs) from its forum
 
 [notify]
 min_tier = "act"          # act | watch | info
+# fixes_min_tier = "info"   # "a fix is out now" alerts down to this tier (default: same as min_tier)
 keyword_matches = false   # also alert on keyword-only (low confidence) matches
 
 # [[notify.ntfy]]
