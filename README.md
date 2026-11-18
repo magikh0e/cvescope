@@ -45,8 +45,7 @@ The write-up on my site covers why I built it and how it ranks things:
 ## Quick start
 
 ```bash
-git clone https://github.com/magikh0e/cvescope && cd cvescope
-pip install .                    # or skip this and use `python -m cvescope` from the checkout
+pip install cvescope             # Python 3.11+, no dependencies
 cvescope init                    # writes a starter config to your user config dir
 # edit it: add [[inventory]] blocks for your gear (see cvescope/config.example.toml)
 cvescope sync                    # first run downloads ~750 MB (CVE List + PoC index), ~800 MB on disk
@@ -57,8 +56,12 @@ cvescope serve                   # the page at http://127.0.0.1:8096/
 The first sync of each feed is treated as history: it loads quietly and raises no alerts.
 After that, run `cvescope sync` on a schedule (below) and only real changes come through.
 
-Want to see it work before wiring up your own gear? The demo config describes a small,
-badly patched network and keeps its data in a separate folder:
+To run the latest code instead, install from a checkout: `git clone
+https://github.com/magikh0e/cvescope && cd cvescope && pip install .` (or skip the install and
+use `python -m cvescope` there).
+
+Want to see it work before wiring up your own gear? The demo config, in a checkout, describes a
+small, badly patched network (and a container SBOM) and keeps its data in a separate folder:
 
 ```bash
 cvescope --config examples/demo.toml sync
@@ -445,7 +448,7 @@ Linux/macOS (cron, every 3 hours):
 ```
 
 Windows (Task Scheduler, every 3 hours, no console window, catches up after sleep). In PowerShell,
-after `pip install .`:
+after `pip install cvescope`:
 
 ```powershell
 $py = (Get-Command pythonw).Source

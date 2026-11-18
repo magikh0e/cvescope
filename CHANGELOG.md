@@ -24,7 +24,7 @@ releases are on the [releases page](https://github.com/magikh0e/cvescope/release
   has report links that follow its host and tier filters, served by `/api/report`; the HTML
   report runs no scripts and prints cleanly to PDF.
 - The page header shows cvescope's version, linked to its release notes; `/api/summary` reports it too.
-- Ready for PyPI: a `publish` workflow builds, tests and `twine check`s each GitHub release and
+- On PyPI: `pip install cvescope`. A `publish` workflow builds, tests and `twine check`s each GitHub release and
   uploads it with PyPI Trusted Publishing (no stored token), refusing a tag that doesn't match
   the version. README images and links are absolute, so the PyPI page shows them.
 
