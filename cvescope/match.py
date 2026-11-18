@@ -322,10 +322,23 @@ def _apply_vuxml(con, it: dict, rows: dict) -> None:
             rows[key] = ("not_affected", "vuxml", f"{label}{adv}: {why}, installed {ver}")
 
 
-def _osv_in_ranges(ver: str, ranges) -> bool | None:
-    """OSV events (introduced / fixed / last_affected) against a version; None if there are none."""
+def _starts_later(a: str, b: str) -> bool:
+    """Does an interval introduced at a start at or after one introduced at b? "0" is the start."""
+    if b == "0":
+        return True
+    return a != "0" and cmp(a, b) >= 0
+
+
+def _osv_check(ver: str, ranges) -> tuple[bool | None, str | None]:
+    """OSV events (introduced / fixed / last_affected) against a version.
+
+    -> (inside an affected interval?, the fix for the release line the version is on).
+    None when there are no ranges. On "not affected" the fix is that of the closest interval
+    below the version, so the reason can say "fixed in 4.19.2".
+    """
     if not ranges:
-        return None
+        return None, None
+    below = None  # (introduced, fixed) of the highest interval the version is past
     for evs in ranges:
         intro = None
         for k, val in evs:
@@ -335,11 +348,17 @@ def _osv_in_ranges(ver: str, ranges) -> bool | None:
                 lo = intro == "0" or cmp(ver, intro) >= 0
                 hi = cmp(ver, val) < 0 if k == "fixed" else cmp(ver, val) <= 0
                 if lo and hi:
-                    return True
+                    return True, val if k == "fixed" else None
+                if lo and k == "fixed" and (below is None or _starts_later(intro, below[0])):
+                    below = (intro, val)
                 intro = None
         if intro is not None and (intro == "0" or cmp(ver, intro) >= 0):
-            return True  # introduced and never fixed
-    return False
+            return True, None  # introduced and never fixed
+    return False, below[1] if below else None
+
+
+def _osv_in_ranges(ver: str, ranges) -> bool | None:
+    return _osv_check(ver, ranges)[0]
 
 
 def _apply_osv(con, it: dict, rows: dict) -> None:
@@ -358,9 +377,12 @@ def _apply_osv(con, it: dict, rows: dict) -> None:
             "SELECT cve_id, osv_id, versions, ranges, fixed FROM osv_pkg WHERE ecosystem=? AND package=?",
             (o.get("ecosystem"), o.get("name"))):
         vs = json.loads(versions or "[]")
-        hit = (ver in vs or ver.lstrip("v") in vs) if vs else _osv_in_ranges(ver, json.loads(ranges or "[]"))
-        if hit is None:
+        in_range, line_fix = _osv_check(ver.lstrip("v") if o.get("ecosystem") == "Go" else ver, json.loads(ranges or "[]"))
+        listed = ver in vs or ver.lstrip("v") in vs
+        if in_range is None and not vs:
             continue
+        hit = listed or bool(in_range)
+        fixed = line_fix or (fixed if hit or in_range is None else None)
         prev = found.get(cve)
         if prev is None or (hit and not prev[0]) or \
                 (hit == prev[0] and oid.startswith("GHSA") and not prev[1].startswith("GHSA")):

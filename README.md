@@ -80,6 +80,7 @@ Each `[[inventory]]` block in the config is one collector:
 | `dpkg` | packages on a Debian/Ubuntu host, checked against the distro's own tracker | `dpkg-query` over ssh |
 | `http_json` | a version field from any JSON endpoint | URL + dotted path |
 | `nmap_xml` | every open service nmap identified in a `-sV` scan you ran | the XML file(s) |
+| `sbom` | every component of a CycloneDX or SPDX SBOM (syft, trivy, cdxgen, your build) | the SBOM file(s) |
 | `docker` | the app in each running Docker/Podman container, from its image tag or version label | `docker ps` (local or ssh) |
 | `osquery` | installed programs, apps and packages, live through `osqueryi` (local or ssh) or from saved results | osquery, or the JSON file(s) |
 | `wpscan` | WordPress core, theme and plugin versions from a WPScan report | the JSON file(s) |
@@ -182,6 +183,37 @@ Most PSAs name no CVE (Proxmox finds many issues itself), so only the CVE-carryi
 here for now. Debian's own packages on a Proxmox host (OpenSSH, OpenSSL, glibc ...) aren't in
 the API's list; add a `dpkg` collector over ssh for the host to check them against the Debian
 tracker.
+
+### SBOMs
+
+An SBOM (software bill of materials) lists everything inside an app, container image or VM,
+down to each library and its exact version. Generate one with whatever you already use (syft,
+trivy, cdxgen, your build) and point an `sbom` collector at it:
+
+```bash
+syft my-app:latest -o cyclonedx-json > ~/sboms/my-app.cdx.json
+```
+
+```toml
+[[inventory]]
+type = "sbom"
+path = "~/sboms/*.json"     # a file, a folder (every .json/.xml/.spdx in it) or a glob
+# name = "web1"             # file everything under one host (default: each SBOM's own name)
+```
+
+CycloneDX (JSON or XML) and SPDX (JSON or tag-value) are read. Every component with a name and
+a version becomes an item, and each one is checked against the best data there is for it:
+
+- **Language packages** (PyPI, npm, Maven, Go, crates.io, RubyGems, NuGet, Packagist, Hex, Pub)
+  against their ecosystem's advisories on OSV.dev, which name the fixed release per release
+  line: "Maven advisory GHSA-jfh8-c2jp-5v3q: fixed in 2.15.0, installed 2.14.1". All of an
+  SBOM's packages go in one batch query, and only new or changed advisories are downloaded.
+- **Debian and Ubuntu packages** (purl `pkg:deb/...` with a distro, or the SBOM's
+  operating-system component) against the distro's own tracker, as for the `dpkg` collector.
+- **Anything with a CPE** against the CVE List under that vendor and product.
+
+The page groups the components under the SBOM's name, so filtering by host shows one image or
+app at a time. The demo config includes a sample SBOM (`examples/demo-sbom.cdx.json`).
 
 ### Containers, endpoints and websites
 
@@ -288,7 +320,7 @@ live in `cvescope/collectors/packages.py`; add your own per item with `aliases =
 | [Debian security tracker](https://security-tracker.debian.org/) JSON | fixed package version per Debian release | ~15 MB, only if you run Debian |
 | [Ubuntu OVAL](https://security-metadata.canonical.com/oval/) | fixed package version per Ubuntu release | ~2 MB per release you run |
 | [FreeBSD VuXML](https://vuxml.freebsd.org/) | affected package builds and base-system patch levels, as `pkg audit` uses them | ~1.4 MB, only if you run OPNsense or FreeBSD |
-| [OSV.dev](https://osv.dev/) | Home Assistant Core's security advisories (PyPI `homeassistant`) with every affected release | one small query per sync, only if you run Home Assistant |
+| [OSV.dev](https://osv.dev/) | advisories for Home Assistant Core and every SBOM language package (PyPI, npm, Maven, Go, ...) with the affected releases | one batch query per sync plus new or changed advisories, only if you have those |
 | [Proxmox VE advisories](https://forum.proxmox.com/threads/proxmox-virtual-environment-security-advisories.149331/) | fixed package builds per Proxmox security advisory (PSA) | the whole forum thread once (~6 pages), then its last page, only if you run Proxmox VE |
 
 ### Optional: NVD lookup

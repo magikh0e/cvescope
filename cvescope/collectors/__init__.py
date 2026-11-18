@@ -1,6 +1,6 @@
 """Inventory collectors. Each [[inventory]] entry in the config names a `type`.
 
-Types: static, command, dpkg, http_json, nmap_xml, docker, osquery, wpscan, whatweb,
+Types: static, command, dpkg, http_json, nmap_xml, sbom, docker, osquery, wpscan, whatweb,
 proxmox, pihole, homeassistant, unifi, opnsense.
 
 A collector returns a list of items:
@@ -56,9 +56,10 @@ def item(name, vendor="", product="", version=None, aliases=(), keywords=(), **e
 
 
 def _registry():
-    from . import appliances, containers, generic, nmap, software, webscan
+    from . import appliances, containers, generic, nmap, sbom, software, webscan
     return {
         "nmap_xml": nmap.nmap_xml,
+        "sbom": sbom.sbom,
         "docker": containers.docker,
         "osquery": software.osquery,
         "wpscan": webscan.wpscan,
@@ -105,7 +106,7 @@ def run(con, cfg, verbose: bool = False) -> list[dict]:
             if not items:
                 items = [item(label)]
         for it in items:
-            if len(items) == 1 and entry.get("name") and typ not in ("static", "dpkg", "nmap_xml", "docker", "osquery", "wpscan", "whatweb"):
+            if len(items) == 1 and entry.get("name") and typ not in ("static", "dpkg", "nmap_xml", "sbom", "docker", "osquery", "wpscan", "whatweb"):
                 it["name"] = entry["name"]
             it["aliases"] = list(dict.fromkeys(it["aliases"] + [a.lower() for a in entry.get("aliases", [])]))
             it["keywords"] = list(dict.fromkeys(it["keywords"] + list(entry.get("keywords", []))))

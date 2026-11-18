@@ -105,3 +105,9 @@ name = "Redis (cache)"
 vendor = "redis"
 product = "redis"
 version = "7.0.11"
+
+# An SBOM for a made-up container image, as syft or trivy would write it. Run the demo from the
+# repository root so the relative path resolves.
+[[inventory]]
+type = "sbom"
+path = "examples/demo-sbom.cdx.json"

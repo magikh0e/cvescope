@@ -63,6 +63,10 @@ CREATE TABLE IF NOT EXISTS osv_pkg(
 CREATE TABLE IF NOT EXISTS psa(
   id TEXT PRIMARY KEY, rev INTEGER, date TEXT, title TEXT, cves TEXT, fixed TEXT, url TEXT) WITHOUT ROWID;
 
+-- OSV.dev advisories by id, kept until they change (osv_pkg is rebuilt from these each sync)
+CREATE TABLE IF NOT EXISTS osv_vuln(
+  id TEXT PRIMARY KEY, modified TEXT, data TEXT) WITHOUT ROWID;
+
 -- optional NVD CPE ranges for CVEs the CVE List can't settle (see sources/nvd.py)
 CREATE TABLE IF NOT EXISTS nvd_cpe(
   cve_id TEXT PRIMARY KEY, fetched TEXT, status TEXT, cpes TEXT) WITHOUT ROWID;

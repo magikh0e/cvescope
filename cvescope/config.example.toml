@@ -144,6 +144,12 @@ version = "30.0.4"
 # max_age_days = 30               # skip scans older than this (0 = no limit)
 # unversioned = false             # true: also services nmap couldn't version (noisy)
 
+# SBOMs you generated (syft, trivy, cdxgen, your build): CycloneDX JSON/XML or SPDX JSON/tag-value
+# [[inventory]]
+# type = "sbom"
+# path = "~/sboms/*.json"         # a file, a folder or a glob
+# name = "web1"                   # optional: one host for all of them (default: each SBOM's name)
+
 # Proxmox VE (an API token with the PVEAuditor role is enough)
 # Get a self-signed cert's pin with: cvescope pin 192.168.1.10:8006
 # [[inventory]]

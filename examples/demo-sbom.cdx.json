@@ -1,0 +1,31 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.5",
+  "version": 1,
+  "metadata": {
+    "component": {"type": "container", "name": "shop-demo", "version": "2024.03"},
+    "tools": {"components": [{"type": "application", "name": "hand-written for the cvescope demo"}]}
+  },
+  "components": [
+    {"type": "operating-system", "name": "debian", "version": "12.4"},
+    {"type": "library", "name": "openssl", "version": "3.0.11-1~deb12u2",
+     "purl": "pkg:deb/debian/openssl@3.0.11-1~deb12u2?arch=amd64&distro=debian-12&upstream=openssl"},
+    {"type": "library", "name": "curl", "version": "7.88.1-10+deb12u4",
+     "purl": "pkg:deb/debian/curl@7.88.1-10+deb12u4?arch=amd64&distro=debian-12&upstream=curl"},
+    {"type": "library", "group": "org.apache.logging.log4j", "name": "log4j-core", "version": "2.14.1",
+     "purl": "pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1",
+     "cpe": "cpe:2.3:a:apache:log4j:2.14.1:*:*:*:*:*:*:*"},
+    {"type": "library", "group": "org.springframework", "name": "spring-beans", "version": "5.3.17",
+     "purl": "pkg:maven/org.springframework/spring-beans@5.3.17"},
+    {"type": "library", "group": "com.fasterxml.jackson.core", "name": "jackson-databind", "version": "2.13.2",
+     "purl": "pkg:maven/com.fasterxml.jackson.core/jackson-databind@2.13.2"},
+    {"type": "library", "name": "lodash", "version": "4.17.15", "purl": "pkg:npm/lodash@4.17.15"},
+    {"type": "library", "name": "express", "version": "4.17.1", "purl": "pkg:npm/express@4.17.1"},
+    {"type": "library", "name": "minimist", "version": "1.2.5", "purl": "pkg:npm/minimist@1.2.5"},
+    {"type": "library", "name": "Django", "version": "3.2.12", "purl": "pkg:pypi/django@3.2.12"},
+    {"type": "library", "name": "requests", "version": "2.25.1", "purl": "pkg:pypi/requests@2.25.1"},
+    {"type": "library", "name": "PyYAML", "version": "5.3.1", "purl": "pkg:pypi/pyyaml@5.3.1"},
+    {"type": "library", "name": "golang.org/x/net", "version": "v0.7.0",
+     "purl": "pkg:golang/golang.org/x/net@v0.7.0"}
+  ]
+}

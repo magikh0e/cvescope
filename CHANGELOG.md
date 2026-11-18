@@ -5,6 +5,23 @@ releases are on the [releases page](https://github.com/magikh0e/cvescope/release
 
 ## [Unreleased]
 
+### Added
+- SBOM import: the new `sbom` collector reads CycloneDX (JSON or XML) and SPDX (JSON or
+  tag-value) files from syft, trivy, cdxgen or a build. Each component becomes an item: language
+  packages (PyPI, npm, Maven, Go, crates.io, RubyGems, NuGet, Packagist, Hex, Pub) are checked
+  against their ecosystem's advisories on OSV.dev, Debian/Ubuntu packages against the distro
+  tracker, and CPEs against the CVE List. The demo config has a sample SBOM.
+
+### Changed
+- The `osv` source asks OSV.dev about every package in one batch query and downloads only new or
+  changed advisories, so an SBOM with hundreds of packages costs a few requests per sync.
+
+### Fixed
+- An OSV advisory with one affected range per release line (Log4Shell lists 2.0-beta9..2.3.1,
+  2.4..2.12.2 and 2.13.0..2.15.0) kept only the last range, so a version on another line read as
+  not affected. All ranges count now, and the reason names the fix for the installed version's
+  line.
+
 ## [0.2.5] - 2026-11-17
 
 ### Fixed
