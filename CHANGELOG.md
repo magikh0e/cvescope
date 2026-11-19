@@ -5,6 +5,8 @@ releases are on the [releases page](https://github.com/magikh0e/cvescope/release
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-18
+
 ### Added
 - End of life in **Changes**: an item entering the 90-day window, and again passing its
   end-of-life date, is a change of its own ("OPNsense: OPNsense 26.1 reaches end of life on
@@ -279,7 +281,8 @@ First release.
 - Act now / watch / info tiers, change events, and ntfy, Home Assistant and webhook alerts.
 - A local web page (127.0.0.1, Host header checked) and a CLI.
 
-[Unreleased]: https://github.com/magikh0e/cvescope/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/magikh0e/cvescope/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/magikh0e/cvescope/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/magikh0e/cvescope/compare/v0.2.9...v0.3.0
 [0.2.9]: https://github.com/magikh0e/cvescope/compare/v0.2.8...v0.2.9
 [0.2.8]: https://github.com/magikh0e/cvescope/compare/v0.2.7...v0.2.8
