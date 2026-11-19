@@ -648,12 +648,22 @@ function closeDetail() {
 async function loadEvents() {
   const q = new URLSearchParams({ days: $("#days").value, all: $("#fAllEvents").checked ? "1" : "0" });
   const ev = await api("/api/events?" + q);
-  $("#eventList").replaceChildren(...(ev.length ? ev.map((e) =>
+  $("#eventList").replaceChildren(...(ev.length ? ev.map((e) => (e.item !== undefined ? eolEvent(e) :
     h("div", { class: "row info", onclick: () => openCve(e.cve_id) }, h("span", { class: "bar" }),
       h("span", { class: "id", text: e.cve_id }), h("span", { class: "title", text: e.summary }),
       h("span", { class: "nums", text: e.ts.slice(0, 16).replace("T", " ") }),
-      e.title ? h("span", { class: "meta", text: e.title }) : null))
+      e.title ? h("span", { class: "meta", text: e.title }) : null)))
     : [empty($("#fAllEvents").checked ? "No changes in this window." : "Nothing changed for the CVEs that hit your inventory in this window. Changes appear after the first sync, which loads history quietly.")]));
+}
+
+// an item reaching end of life (or 90 days from it) is a change too; it opens the item
+function eolEvent(e) {
+  const past = e.kind === "eol";
+  return h("div", { class: `row ${past ? "watch" : "info"}`, title: "Data: endoflife.date",
+    onclick: () => { if (e.item && state.items.some((x) => x.id === e.item)) selectItem(e.item); } },
+  h("span", { class: "bar" }), h("span", { class: "id", text: past ? "end of life" : "EOL soon" }),
+  h("span", { class: "title", text: e.summary }),
+  h("span", { class: "nums", text: e.ts.slice(0, 16).replace("T", " ") }));
 }
 
 async function loadHot() {

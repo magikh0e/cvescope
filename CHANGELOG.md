@@ -5,6 +5,13 @@ releases are on the [releases page](https://github.com/magikh0e/cvescope/release
 
 ## [Unreleased]
 
+### Added
+- End of life in **Changes**: an item entering the 90-day window, and again passing its
+  end-of-life date, is a change of its own ("OPNsense: OPNsense 26.1 reaches end of life on
+  2027-01-31 (in 74 days)"), listed in reports and sent as an alert line whatever `min_tier`
+  says (`notify.end_of_life = false` turns that off). Clicking it on the page opens the item.
+  The first sync after upgrading only notes where things stand.
+
 ## [0.3.0] - 2026-11-18
 
 ### Added

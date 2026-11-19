@@ -39,6 +39,8 @@ DEFAULTS = {
         # "a fix is out now" alerts: "" follows min_tier; "info" tells you about every fix you can install
         "fixes_min_tier": "",
         "keyword_matches": False,
+        # an item reaching end of life (or 90 days from it) alerts on its own, whatever min_tier says
+        "end_of_life": True,
         "ntfy": [],
         "homeassistant": [],
         "webhook": [],

@@ -185,6 +185,11 @@ Distro and vendor builds are left out (Debian's or Ubuntu's packages, a Proxmox 
 distro keeps patching its build after upstream stops, so upstream's date doesn't apply to it.
 Items whose version isn't on a line endoflife.date lists aren't judged.
 
+Reaching end of life is also a change: when an item enters the 90-day window and again when it
+passes the date, **Changes** lists it ("OPNsense: OPNsense 26.1 reaches end of life on
+2027-01-31 (in 74 days)"), and so do reports and alerts. The first sync after upgrading only
+notes where things stand, so it doesn't list everything that's already past end of life.
+
 ### FreeBSD and OPNsense packages
 
 OPNsense builds its packages from FreeBSD ports, and FreeBSD keeps its own vulnerability
@@ -445,6 +450,10 @@ service = "notify.mobile_app_your_phone"
 `min_tier` decides which changes are worth a message. "A fix is out now" changes use
 `fixes_min_tier` instead when you set it, so you can hear about every update that clears a
 finding without getting every info-tier change. Left out, it follows `min_tier`.
+
+An item reaching end of life (or 90 days from it) isn't a CVE, so no tier applies: it gets an
+"End of life:" line in the next message whatever `min_tier` says. `end_of_life = false` turns
+those off.
 
 `cvescope notify --test` sends one test message to every channel. `cvescope sync --dry-run`
 prints what it would send without marking anything as sent.

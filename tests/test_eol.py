@@ -6,7 +6,7 @@ import json
 import unittest
 from unittest import mock
 
-from cvescope import config, db, eol, query, report, sources
+from cvescope import config, db, eol, notify, query, report, sources
 from cvescope.sources import endoflife
 
 TODAY = dt.date(2026, 11, 18)
@@ -101,6 +101,62 @@ class EndOfLife(unittest.TestCase):
         con, cfg = fresh()
         self.assertIsNone(query.summary(con, cfg)["nvd_notice"])
         self.assertNotIn("NVD API", report.render(report.build(con, cfg), "md"))
+
+
+class Changes(unittest.TestCase):
+    """Reaching end of life (or 90 days from it) is a change: Changes, reports and alerts."""
+
+    def setUp(self):
+        self.con, self.cfg = fresh()
+        self.items = [{"id": i, "version": v, "extra": ex} for i, _, v, _, ex in ITEMS]
+
+    def kinds(self):
+        return [(r["kind"], json.loads(r["detail"])["item"]) for r in self.con.execute("SELECT kind, detail FROM event ORDER BY id")]
+
+    def test_track(self):
+        self.assertEqual(eol.track(self.con, self.items, TODAY), 0)      # first time: just remember
+        self.assertEqual(self.kinds(), [])
+        self.assertEqual(eol.track(self.con, self.items, TODAY), 0)      # nothing moved
+        later = dt.date(2027, 2, 1)                                       # OPNsense 26.1 passes its date
+        self.assertEqual(eol.track(self.con, self.items, later), 1)
+        self.assertEqual(self.kinds(), [("eol", "c")])
+        # an item added later that's already past end of life is a change too
+        self.con.execute("INSERT INTO item(id,name,version,collector,aliases,keywords,extra) VALUES"
+                         "('h','OpenSSL (fw2)','3.0.1','x:host2','[\"openssl:openssl\"]','[]','{}')")
+        self.items.append({"id": "h", "version": "3.0.1", "extra": {}})
+        self.assertEqual(eol.track(self.con, self.items, later), 1)
+        self.assertEqual(self.kinds()[-1], ("eol", "h"))
+
+    def test_no_release_data_no_changes(self):
+        self.con.execute("DELETE FROM eol_cycle")
+        self.assertEqual(eol.track(self.con, self.items, TODAY), 0)
+        self.assertIsNone(db.meta_get(self.con, "eol_seen"))
+
+    def changed(self):
+        eol.track(self.con, self.items, TODAY)
+        db.meta_set(self.con, "eol_seen", {})     # pretend none of them were flagged last time
+        eol.track(self.con, self.items, TODAY)
+
+    def test_listed(self):
+        self.changed()
+        ev = {e["item"]: e for e in query.events(self.con, self.cfg, days=7)}
+        self.assertEqual(sorted(ev), ["a", "c", "e"])
+        self.assertEqual(ev["c"]["kind"], "eol_soon")
+        self.assertEqual(ev["a"]["summary"], "OpenSSL (fw): OpenSSL 3.0 reached end of life on 2026-09-07: "
+                                             "no more fixes; Premium support is still offered")
+        ids = {c["id"] for c in report.build(self.con, self.cfg)["changes"]}
+        self.assertEqual(ids, {"End of life", "End of life soon"})
+
+    def test_alerts(self):
+        self.changed()
+        alerts, ids = notify._pending(self.con, self.cfg)
+        self.assertEqual((len(alerts), len(ids)), (3, 3))
+        title, msg = notify.format_message(alerts)
+        self.assertEqual(title, "cvescope: 3 end of life")
+        self.assertIn("End of life: OPNsense: OPNsense 26.1 reaches end of life on 2027-01-31 (in 74 days)", msg)
+        self.cfg["notify"]["end_of_life"] = False
+        alerts, ids = notify._pending(self.con, self.cfg)
+        self.assertEqual((alerts, len(ids)), ([], 3))     # still marked as seen once sent
 
 
 if __name__ == "__main__":

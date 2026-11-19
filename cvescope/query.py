@@ -268,6 +268,9 @@ def item_names(con) -> dict:
     return {r[0]: r[1] for r in con.execute("SELECT id, name FROM item")}
 
 
+EOL_KINDS = ("eol", "eol_soon")  # end-of-life changes belong to an item (eol.track)
+
+
 def event_summary(e: dict, names: dict | None = None) -> str:
     d = json.loads(e.get("detail") or "{}")
     s = _KIND.get(e["kind"], e["kind"])
@@ -288,6 +291,9 @@ def event_summary(e: dict, names: dict | None = None) -> str:
     elif e["kind"] == "fix":
         item = d.get("item")
         s += f" ({(names or {}).get(item, item)}): {d.get('detail')}"
+    elif e["kind"] in EOL_KINDS:  # an item, not a CVE: "OpenSSL (fw): OpenSSL 3.0 reached end of life on ..."
+        item = d.get("item")
+        s = f"{(names or {}).get(item, item)}: {d.get('text')}"
     elif e["kind"] == "poc":
         s += f": {d.get('url')}"
     elif e["kind"] in ("msf", "nuclei", "edb"):
@@ -301,8 +307,9 @@ def events(con, cfg, days=7, matched_only=True, limit=500) -> list[dict]:
          "WHERE e.ts >= ? AND e.baseline=0")
     if matched_only:
         q += (" AND e.cve_id IN (SELECT cve_id FROM match WHERE status IN ('affected','check'))"
-              " OR (e.ts >= ? AND e.kind='resolved')")
-        args = [since, since]
+              " OR (e.ts >= ? AND e.kind='resolved')"
+              f" OR (e.ts >= ? AND e.baseline=0 AND e.kind IN ({','.join(repr(k) for k in EOL_KINDS)}))")
+        args = [since, since, since]
     else:
         q += " AND e.kind != 'new_cve'"
         args = [since]
@@ -311,6 +318,8 @@ def events(con, cfg, days=7, matched_only=True, limit=500) -> list[dict]:
     names = item_names(con)
     for r in rows:
         r["summary"] = event_summary(r, names)
+        if r["kind"] in EOL_KINDS:  # the page opens the item, not a CVE
+            r["item"] = json.loads(r.get("detail") or "{}").get("item")
     return rows
 
 

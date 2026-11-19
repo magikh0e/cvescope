@@ -104,7 +104,9 @@ def build(con, cfg, tiers=("act", "watch"), host: str | None = None, days: int =
             det = {}
         if want and det.get("item") not in item_ids and e["cve_id"] not in host_cves:
             continue
-        changes.append({"ts": (e.get("ts") or "")[:16].replace("T", " "), "id": e["cve_id"], "kind": e.get("kind"),
+        changes.append({"ts": (e.get("ts") or "")[:16].replace("T", " "),
+                        "id": e["cve_id"] or ("End of life" if e.get("kind") == "eol" else "End of life soon"),
+                        "kind": e.get("kind"),
                         "summary": e.get("summary") or e.get("kind"), "title": (e.get("title") or "")[:160]})
 
     blind = [{"item": it["name"], "host": it["host"], "why": it["error"] and f"collector failed: {it['error']}"

@@ -22,17 +22,23 @@ def _pending(con, cfg) -> tuple[list[dict], list[int]]:
         "SELECT * FROM event WHERE notified=0 AND baseline=0 AND kind NOT IN ('resolved','ack','unack') "
         "ORDER BY ts")]
     ids = [e["id"] for e in ev]
+    names = query.item_names(con)
+    # an item reaching end of life (or 90 days from it) isn't a CVE: it alerts on its own,
+    # unless notify.end_of_life is off
+    eols = [{"kind": "eol", "tier": "eol", "change": query.event_summary(e, names)}
+            for e in ev if e["kind"] in query.EOL_KINDS and e.get("cve_id") == ""] \
+        if cfg["notify"].get("end_of_life", True) else []
+    ev = [e for e in ev if e["kind"] not in query.EOL_KINDS]
     statuses = ("affected", "check", "keyword") if cfg["notify"].get("keyword_matches") else ("affected", "check")
     cves = {e["cve_id"] for e in ev}
     if not cves:
-        return [], ids
+        return eols, ids
     ms = {}
     for m in query.matches(con, cfg, include_keyword=True, statuses=statuses):
         if m["cve_id"] in cves:
             ms.setdefault(m["cve_id"], []).append(m)
     limit = TIER_RANK.get(cfg["notify"].get("min_tier", "act"), 0)
     fix_limit = TIER_RANK.get(cfg["notify"].get("fixes_min_tier") or cfg["notify"].get("min_tier", "act"), 0)
-    names = query.item_names(con)
     out = []
     for cid, mlist in ms.items():
         t = mlist[0]["tier"]
@@ -48,17 +54,23 @@ def _pending(con, cfg) -> tuple[list[dict], list[int]]:
                     "changes": list(dict.fromkeys(changes)), "epss_pct": mlist[0].get("epss_pct"),
                     "cvss": mlist[0].get("cvss")})
     out.sort(key=lambda x: (TIER_RANK[x["tier"]], -(x["epss_pct"] or 0)))
-    return out, ids
+    return out + eols, ids
 
 
 def format_message(alerts: list[dict]) -> tuple[str, str]:
+    eols = [a for a in alerts if a.get("kind") == "eol"]
+    alerts = [a for a in alerts if a.get("kind") != "eol"]
     n = {t: sum(1 for a in alerts if a["tier"] == t) for t in TIER_RANK}
     parts = [f"{n[t]} {label}" for t, label in (("act", "act now"), ("watch", "watch"), ("info", "info")) if n[t]]
+    if eols:
+        parts.append(f"{len(eols)} end of life")
     title = "cvescope: " + ", ".join(parts)
     fixes = sum(1 for a in alerts if any(c.startswith("fix available") for c in a["changes"]))
     if fixes:
         title += f" ({fixes} with a fix available now)" if fixes < len(alerts) else " (fix available now)"
     lines = []
+    for a in eols[:10]:
+        lines.append("End of life: " + a["change"])
     for a in alerts[:15]:
         head = f"{a['cve']} [{query.TIER_LABEL[a['tier']]}]"
         if a.get("cvss"):

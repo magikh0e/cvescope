@@ -14,11 +14,13 @@ from __future__ import annotations
 import datetime as dt
 import json
 
+from . import db
 from .match import _alias, _on_line
 from .versions import clean
 
 SOON_DAYS = 90  # "end of life soon": time to plan the upgrade
 SOURCE = "https://endoflife.date"
+KINDS = {"eol": "eol", "soon": "eol_soon"}  # state -> event kind
 
 
 def _today() -> dt.date:
@@ -105,3 +107,25 @@ def for_items(con, items: list[dict], today: dt.date | None = None) -> dict[str,
                          "line": ln["line"], "link": m["link"],
                          "text": describe(m["label"], ln, st[0], st[1], today, m["eoes_label"])}
     return out
+
+
+def track(con, items: list[dict], today: dt.date | None = None) -> int:
+    """Record end-of-life changes as events: an item enters the 90-day window, or passes end of life.
+
+    Compares with where things stood at the last match (meta eol_seen). The first time only
+    remembers that, so upgrading doesn't fill Changes; an item added later that's already past
+    end of life is a change. Without release data nothing is recorded or forgotten.
+    """
+    if not con.execute("SELECT 1 FROM eol_cycle LIMIT 1").fetchone():
+        return 0
+    now = for_items(con, items, today)
+    prev = db.meta_get(con, "eol_seen")
+    n = 0
+    if prev is not None:
+        for iid, e in now.items():
+            if prev.get(iid) != e["state"]:
+                db.add_event(con, "", KINDS[e["state"]],
+                             {"item": iid, "text": e["text"], "link": e["link"], "date": e["date"]})
+                n += 1
+    db.meta_set(con, "eol_seen", {iid: e["state"] for iid, e in now.items()})
+    return n

@@ -739,6 +739,8 @@ def run(con, cfg) -> str:
             db.add_event(con, cid, "resolved", {"item": iid, "status": "gone"})
     con.executemany("INSERT INTO match VALUES(?,?,?,?,?,?)", rows)
     con.commit()
+    from . import eol  # eol reads match's helpers, so it's imported here, not at the top
+    eol.track(con, items)
     db.meta_set(con, "match_done", t)
     counts = {}
     for r in rows:
